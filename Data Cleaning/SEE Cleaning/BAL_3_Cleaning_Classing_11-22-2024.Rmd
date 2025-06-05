@@ -1,0 +1,656 @@
+---
+title: "BAL_3 Cleaning + Clustering"
+author: "Sophie Edelstein"
+date: "2024-11-21"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 100)
+knitr::opts_chunk$set(error = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r, echo=FALSE}
+# close all, clear all
+graphics.off()  
+rm(list = ls())
+# declare directory where data-file is stored
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/Raw Data")
+```
+
+```{r}
+# Load necessary packages
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+```
+
+Now, we are going to create a function so that we can adjust the scale on the FeaturePlots for checking the quality of the data
+```{r}
+library(Seurat)
+library(ggplot2)
+# Define the custom FeaturePlot function
+customFeaturePlot <- function(seurat_object, feature_limits = list(nFeature_RNA = c(0, 7000), nCount_RNA = c(0, 20000), percent_mt = c(0, 70))) {
+  # Create the FeaturePlot
+  p <- FeaturePlot(seurat_object, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+  
+  # Adjust the color scale limits for each plot
+  p[[1]] <- p[[1]] + scale_colour_gradientn(limits = feature_limits$nFeature_RNA, colours = c("yellow", "red"))
+  p[[2]] <- p[[2]] + scale_colour_gradientn(limits = feature_limits$nCount_RNA, colours = c("yellow", "red"))
+  p[[3]] <- p[[3]] + scale_colour_gradientn(limits = feature_limits$percent_mt, colours = c("yellow", "red"))
+  
+  # Print the plots
+  print(p)
+}
+```
+
+```{r}
+# Load in data for this sample using Read10X (raw data)
+BAL_3 = Read10X(data.dir = "~/Desktop/SE Single Cell/BAL/BAL_3/Raw Data/")
+# Create Seurat object
+BAL_3_obj = CreateSeuratObject(counts = BAL_3, 
+                                   project = "BAL_3", min.cells = 3, 
+                                   min.features = 50)
+# Calculating the percentage of mitochondrial genes for each cell in the Seurat object
+# Then we assign the values to metadata column called "percent.mt
+BAL_3_obj[["percent.mt"]] = PercentageFeatureSet(BAL_3_obj, pattern = "^Mt-")
+# How many cells?
+BAL_3_obj
+# Let's visualize what the data looks like
+VlnPlot(BAL_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+        ncol = 3)
+# On the log scale; this will compress our data and make it easier to interpret
+VlnPlot(BAL_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+        ncol = 3, log = TRUE)
+```
+
+Filtering the object, first by nCount_RNA
+```{r}
+# Filtering the object by nCount_RNA
+BAL_3_obj = subset(BAL_3_obj, nCount_RNA > 1000)
+# How many cell remaining?
+BAL_3_obj
+VlnPlot(BAL_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+# On a log scale
+VlnPlot(BAL_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, log = TRUE)
+```
+
+Now filtering by nFeature_RNA
+```{r}
+# Filtering the object by nFeature_RNA
+BAL_3_obj = subset(BAL_3_obj, nFeature_RNA > 1000)
+BAL_3_obj
+VlnPlot(BAL_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, log = TRUE)
+```
+
+Resetting working directory to main project (object) folder for organizational purposes
+```{r}
+# Moving back to parent folder to keep our raw data separate and organized 
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+```
+
+Normalizing and scaling our data (round 1)
+```{r}
+# Normalizing the data (round 1)
+BAL_3_obj = NormalizeData(BAL_3_obj)
+# Scale the data first; creates final matrix
+BAL_3_obj = ScaleData(BAL_3_obj)
+# Finding variable features
+BAL_3_obj = FindVariableFeatures(BAL_3_obj)
+```
+
+Principal Component Analysis - Round 1
+```{r}
+# Principle component analysis (round 1)
+BAL_3_obj = RunPCA(BAL_3_obj, npcs = 100)
+# Look at the PCAs generated
+pdf(file='BAL_3_obj_11-21-2024.pdf',width=10,height=8)
+ElbowPlot(BAL_3_obj,ndims = 100)
+PCHeatmap(BAL_3_obj,cells=200,balanced=T,dims=1:9)
+PCHeatmap(BAL_3_obj,cells=200,balanced=T,dims=10:18)
+PCHeatmap(BAL_3_obj,cells=200,balanced=T,dims=19:27)
+PCHeatmap(BAL_3_obj,cells=200,balanced=T,dims=28:36)
+PCHeatmap(BAL_3_obj,cells=200,balanced=T,dims=37:45)
+PCHeatmap(BAL_3_obj,cells=200,balanced=T,dims=46:54)
+PCHeatmap(BAL_3_obj,cells=200,balanced=T,dims=55:63)
+PCHeatmap(BAL_3_obj,cells=200,balanced=T,dims=64:72)
+PCHeatmap(BAL_3_obj,cells=200,balanced=T,dims=73:81)
+PCHeatmap(BAL_3_obj,cells=200,balanced=T,dims=82:90)
+PCHeatmap(BAL_3_obj,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+PC Selection - Choosing 26 for this first pass
+```{r}
+# UMAP, looking at 21 PCs first
+BAL_3_obj = RunUMAP(BAL_3_obj, dims = 1:21) 
+DimPlot(BAL_3_obj)
+# Cluster data (creating nearest neighbor graph, not clustering)
+# dims should match dims in PCA UMAP DimPlot
+BAL_3_obj = FindNeighbors(BAL_3_obj, dims = 1:21)
+# Defining clusters
+BAL_3_obj = FindClusters(BAL_3_obj, res = 5.0)
+DimPlot(BAL_3_obj, label = TRUE)
+```
+Checking data quality and lineage tracing so we can start finely cleaning the object
+```{r}
+# Feature plots for data quality / lineage
+FeaturePlot(BAL_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+customFeaturePlot(BAL_3_obj)
+FeaturePlot(BAL_3_obj, features = "nFeature_RNA", label = TRUE)
+FeaturePlot(BAL_3_obj, features = "percent.mt", label = TRUE)
+VlnPlot(BAL_3_obj, features = "percent.mt")
+FeaturePlot(BAL_3_obj, features = c("Epcam", "Ptprc","Col1a1","Cdh5"), label = TRUE)
+```
+
+Remove 33 nd 53
+```{r}
+sub_BAL_3_obj = subset(BAL_3_obj, idents = c("33","53"),invert = TRUE)
+FeaturePlot(sub_BAL_3_obj, features = c("nFeature_RNA", "nCount_RNA", 
+                                            "percent.mt"), ncol = 3, label = TRUE)
+FeaturePlot(sub_BAL_3_obj, features = "nFeature_RNA", label = TRUE)
+FeaturePlot(sub_BAL_3_obj, features = "percent.mt", label = TRUE)
+```
+
+Now rescaling and renormalizing after the first cut. Make sure you do this everytime you remove clusters because when you do this, you are changing the relative structure of the data and thus need to rescale and renormalize.
+```{r}
+# Rescaling after first trimming
+sub_BAL_3_obj = ScaleData(sub_BAL_3_obj)
+# Normalizing the data
+sub_BAL_3_obj = NormalizeData(sub_BAL_3_obj)
+# Finding variable features
+sub_BAL_3_obj = FindVariableFeatures(sub_BAL_3_obj)
+```
+
+Principal Component Anlaysis (Round 2)
+```{r}
+# Running PCA again with our new subset object 
+sub_BAL_3_obj = RunPCA(sub_BAL_3_obj, npcs = 100)
+pdf(file='sub_BAL_3_obj_11-21-2024.pdf',width=10,height=8)
+ElbowPlot(sub_BAL_3_obj,ndims = 100)
+PCHeatmap(sub_BAL_3_obj,cells=200,balanced=T,dims=1:9)
+PCHeatmap(sub_BAL_3_obj,cells=200,balanced=T,dims=10:18)
+PCHeatmap(sub_BAL_3_obj,cells=200,balanced=T,dims=19:27)
+PCHeatmap(sub_BAL_3_obj,cells=200,balanced=T,dims=28:36)
+PCHeatmap(sub_BAL_3_obj,cells=200,balanced=T,dims=37:45)
+PCHeatmap(sub_BAL_3_obj,cells=200,balanced=T,dims=46:54)
+PCHeatmap(sub_BAL_3_obj,cells=200,balanced=T,dims=55:63)
+PCHeatmap(sub_BAL_3_obj,cells=200,balanced=T,dims=64:72)
+PCHeatmap(sub_BAL_3_obj,cells=200,balanced=T,dims=73:81)
+PCHeatmap(sub_BAL_3_obj,cells=200,balanced=T,dims=82:90)
+PCHeatmap(sub_BAL_3_obj,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+Creating our new embedding with 18 PCs
+```{r}
+# PCA round 2 - cutoff at 18 PCs
+sub_BAL_3_obj = RunUMAP(sub_BAL_3_obj, dims = 1:18)
+DimPlot(sub_BAL_3_obj)
+# Creating nearest neighbor graph, not clustering
+sub_BAL_3_obj = FindNeighbors(sub_BAL_3_obj, dims = 1:18)
+# Defining clusters - high res to very finely remove low-info reads
+sub_BAL_3_obj = FindClusters(sub_BAL_3_obj, res = 0.30)
+# Visualize the clustering
+DimPlot(sub_BAL_3_obj, label = TRUE)
+FeaturePlot(sub_BAL_3_obj, features = c("Epcam", "Ptprc", "Col1a1","Cdh5"), ncol = 2, label = TRUE)
+sub_BAL_3_obj$stash = Idents(sub_BAL_3_obj)
+```
+
+Class by canonical markers
+```{r}
+cell.epi = WhichCells(sub_BAL_3_obj, idents = c(7))
+cell.immu = WhichCells(sub_BAL_3_obj, idents = c(0,1,2,3,4,5,6,8))
+sub_BAL_3_obj = SetIdent(sub_BAL_3_obj, cells = cell.epi, value = 'Epithelium')
+sub_BAL_3_obj = SetIdent(sub_BAL_3_obj, cells = cell.immu, value = 'Immune')
+```
+
+New feature plot with cell class labels
+```{r}
+FeaturePlot(sub_BAL_3_obj, features = c("Epcam", "Ptprc"), label = TRUE)
+```
+
+Stash the cell class labels and ensure everything is labeled
+```{r}
+# Stash the cell class
+sub_BAL_3_obj$CellClass = Idents(sub_BAL_3_obj)
+table(sub_BAL_3_obj$CellClass)
+# confirming that everything is labeled
+sum(is.na(sub_BAL_3_obj$CellClass))
+```
+Restore the cluster labels
+```{r}
+# Restores the cell identities that were previously stashed or stored elsewhere.
+Idents(sub_BAL_3_obj) = sub_BAL_3_obj$stash
+table(Idents(sub_BAL_3_obj))
+```
+
+Looks good to me. Let's class by canonical markers and get moving to DGEs.
+```{r}
+BAL_3_DGE = FindAllMarkers(sub_BAL_3_obj, min.pct = 0.1,logfc.threshold = 0.1)
+BAL_3_DGE$ratio = BAL_3_DGE$pct.1/BAL_3_DGE$pct.2
+BAL_3_DGE$power = BAL_3_DGE$ratio*BAL_3_DGE$avg_log2FC
+write.csv(BAL_3_DGE, file = "BAL_3_DGE_11-21-2024.csv", row.names = TRUE)
+# Top markers
+top10_BAL_3 = BAL_3_DGE %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+DoHeatmap(sub_BAL_3_obj, features = top10_BAL_3$gene) 
+write.csv(top10_BAL_3, file = "top10_BAL_3_DGE_11-21-2024.csv", row.names = TRUE)
+```
+Look at marker lists
+```{r}
+View(BAL_3_DGE)
+View(top10_BAL_3)
+FeaturePlot(sub_BAL_3_obj, features = c("Sox9", "Dclk1","Trpm5"), label = TRUE)
+```
+
+Clusters 0,1,2 (Immune): Alveolar Macrophages
+Cluster 3 (Immune): Cell Cycle
+Cluster 4 (Immune): Interstitial Macrophages
+Cluster 5 (Immune): B Cells
+Cluster 6 (Immune): T Cells
+Cluster 7 (Epithelium): Epithelial Progenitors
+Cluster 8 (Immune): Monocytes
+
+Look at native atlas for cross referencing 
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/Native Lung Atlas")
+load("lung.combined.clean.classed.annotated.final.2022-07-24.Robj")
+Idents(lung.combined) = lung.combined$CellType_Final
+FeaturePlot(lung.combined, features = c(""))
+```
+
+Clusters 0, 1, 2: Alveolar Macrophages
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+# Generate FeaturePlots for sub_BAL_2_obj
+plots_BAL_3 <- FeaturePlot(sub_BAL_3_obj, features = c("Cela1","Prodh2","Slc39a2","Krt79"), label = TRUE) &
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for BAL_2
+title_BAL_3 <- ggplot() + 
+  ggtitle("sub_BAL_3_obj") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2))) # Minimal bottom margin
+# Combine title and BAL_3 FeaturePlots with tighter spacing
+plot_BAL_3 <- (title_BAL_3 / plots_BAL_3) + plot_layout(heights = c(0.05, 1)) # Minimized title height
+# Generate FeaturePlots for lung.combined
+plots_lung_combined <- FeaturePlot(lung.combined, features = c("Top2a", "Mki67", "Mrc1", "Cenpa"), label = TRUE) & scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for lung.combined
+title_lung_combined <- ggplot() + 
+  ggtitle("lung.combined") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2)))
+plot_lung_combined <- (title_lung_combined / plots_lung_combined) + plot_layout(heights = c(0.05, 1))
+# Arrange both groups side by side
+final_plot <- plot_BAL_3 | plot_lung_combined
+# Display the final combined plot
+print(final_plot)
+ggsave("BAL_3_c0.1.2_w.native_cell.cycle.png", final_plot, dpi = 600, width = 24, height = 8)
+```
+
+Cluster 3: Cell Cycle
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+# Generate FeaturePlots for sub_BAL_2_obj
+plots_BAL_3 <- FeaturePlot(sub_BAL_3_obj, features = c("Top2a","Mki67","Prodh2","Krt79"), label = TRUE) &
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for BAL_2
+title_BAL_3 <- ggplot() + 
+  ggtitle("sub_BAL_3_obj") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2))) # Minimal bottom margin
+# Combine title and BAL_3 FeaturePlots with tighter spacing
+plot_BAL_3 <- (title_BAL_3 / plots_BAL_3) + plot_layout(heights = c(0.05, 1)) # Minimized title height
+# Generate FeaturePlots for lung.combined
+plots_lung_combined <- FeaturePlot(lung.combined, features = c("Top2a","Mki67","Prodh2","Krt79"), label = TRUE) & scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for lung.combined
+title_lung_combined <- ggplot() + 
+  ggtitle("lung.combined") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2)))
+plot_lung_combined <- (title_lung_combined / plots_lung_combined) + plot_layout(heights = c(0.05, 1))
+# Arrange both groups side by side
+final_plot <- plot_BAL_3 | plot_lung_combined
+# Display the final combined plot
+print(final_plot)
+ggsave("BAL_3_c3.w.native_cell.cycle.png", final_plot, dpi = 600, width = 24, height = 8)
+```
+
+Cluster 4: Interstitial Macrophages (Slamf9/Folr2/Pid1/Trem2)
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+# Generate FeaturePlots for sub_BAL_2_obj
+plots_BAL_3 <- FeaturePlot(sub_BAL_3_obj, features = c("Trem2","Clec10a","Pid1","P2ry6"), label = TRUE) &
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for BAL_2
+title_BAL_3 <- ggplot() + 
+  ggtitle("sub_BAL_3_obj") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2))) # Minimal bottom margin
+# Combine title and BAL_3 FeaturePlots with tighter spacing
+plot_BAL_3 <- (title_BAL_3 / plots_BAL_3) + plot_layout(heights = c(0.05, 1)) # Minimized title height
+# Generate FeaturePlots for lung.combined
+plots_lung_combined <- FeaturePlot(lung.combined, features = c("Trem2","Clec10a","Pid1","P2ry6"), label = TRUE) & scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for lung.combined
+title_lung_combined <- ggplot() + 
+  ggtitle("lung.combined") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2)))
+plot_lung_combined <- (title_lung_combined / plots_lung_combined) + plot_layout(heights = c(0.05, 1))
+# Arrange both groups side by side
+final_plot <- plot_BAL_3 | plot_lung_combined
+# Display the final combined plot
+print(final_plot)
+ggsave("BAL_3_c4.w.native_inter.mac.png", final_plot, dpi = 600, width = 24, height = 8)
+```
+
+Cluster 5: B Cells
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+# Generate FeaturePlots for sub_BAL_2_obj
+plots_BAL_3 <- FeaturePlot(sub_BAL_3_obj, features = c("Cd79b", "Fcmr","Bank1","Lax1"), label = TRUE) &
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for BAL_2
+title_BAL_3 <- ggplot() + 
+  ggtitle("sub_BAL_3_obj") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2))) # Minimal bottom margin
+# Combine title and BAL_3 FeaturePlots with tighter spacing
+plot_BAL_3 <- (title_BAL_3 / plots_BAL_3) + plot_layout(heights = c(0.05, 1)) # Minimized title height
+# Generate FeaturePlots for lung.combined
+plots_lung_combined <- FeaturePlot(lung.combined, features = c("Cd79b", "Fcmr","Bank1","Lax1"), label = TRUE) & scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for lung.combined
+title_lung_combined <- ggplot() + 
+  ggtitle("lung.combined") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2)))
+plot_lung_combined <- (title_lung_combined / plots_lung_combined) + plot_layout(heights = c(0.05, 1))
+# Arrange both groups side by side
+final_plot <- plot_BAL_3 | plot_lung_combined
+# Display the final combined plot
+print(final_plot)
+ggsave("BAL_3_c5.w.native_b.cell.png", final_plot, dpi = 600, width = 24, height = 8)
+```
+
+Cluster 6: T Cells
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+# Generate FeaturePlots for sub_BAL_2_obj
+plots_BAL_3 <- FeaturePlot(sub_BAL_3_obj, features = c("Cd3e", "Lef1", "Cd3d", "Skap1"), label = TRUE) &
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for BAL_2
+title_BAL_3 <- ggplot() + 
+  ggtitle("sub_BAL_3_obj") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2))) # Minimal bottom margin
+# Combine title and BAL_3 FeaturePlots with tighter spacing
+plot_BAL_3 <- (title_BAL_3 / plots_BAL_3) + plot_layout(heights = c(0.05, 1)) # Minimized title height
+# Generate FeaturePlots for lung.combined
+plots_lung_combined <- FeaturePlot(lung.combined, features = c("Cd3e", "Lef1", "Cd3d", "Skap1"), label = TRUE) & scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for lung.combined
+title_lung_combined <- ggplot() + 
+  ggtitle("lung.combined") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2)))
+plot_lung_combined <- (title_lung_combined / plots_lung_combined) + plot_layout(heights = c(0.05, 1))
+# Arrange both groups side by side
+final_plot <- plot_BAL_3 | plot_lung_combined
+# Display the final combined plot
+print(final_plot)
+ggsave("BAL_3_c6.w.native_t.cell.png", final_plot, dpi = 600, width = 24, height = 8)
+```
+Before I do more on cluster 7, let's submit it as I did with replicae 2 to look a bit closer at the epithelial cells (all 56 of them, lol)
+
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+# Subset the Seurat object for cluster 8
+cluster_7_obj <- subset(sub_BAL_3_obj, idents = 7)
+# Normalize and scale the data
+cluster_7_obj <- NormalizeData(cluster_7_obj)
+cluster_7_obj <- FindVariableFeatures(cluster_7_obj)
+cluster_7_obj <- ScaleData(cluster_7_obj)
+# Run PCA
+cluster_7_obj = RunPCA(cluster_7_obj, npcs = 55)
+pdf(file='cluster_7_obj_11-22-2024.pdf',width=10,height=8)
+ElbowPlot(cluster_7_obj,ndims = 100)
+PCHeatmap(cluster_7_obj,cells=200,balanced=T,dims=1:9)
+PCHeatmap(cluster_7_obj,cells=200,balanced=T,dims=10:18)
+PCHeatmap(cluster_7_obj,cells=200,balanced=T,dims=19:27)
+PCHeatmap(cluster_7_obj,cells=200,balanced=T,dims=28:36)
+PCHeatmap(cluster_7_obj,cells=200,balanced=T,dims=37:45)
+PCHeatmap(cluster_7_obj,cells=200,balanced=T,dims=46:54)
+dev.off()
+# Find neighbors and clusters
+cluster_7_obj <- FindNeighbors(cluster_7_obj, dims = 1:7) # Adjust the dimensions as needed
+cluster_7_obj <- FindClusters(cluster_7_obj, resolution = 0.7) # Adjust resolution as needed
+# Visualize the subclusters using UMAP or t-SNE
+cluster_7_obj <- RunUMAP(cluster_7_obj, dims = 1:7)
+DimPlot(cluster_7_obj, reduction = "umap", label = TRUE)
+```
+
+Markers on this sub-cluster (cluster 7)
+```{r}
+# Visualize the subclusters using UMAP or t-SNE
+FeaturePlot(cluster_7_obj, features = c("Epcam","Ptprc"))
+c7.epi = FindAllMarkers(cluster_7_obj, min.pct = 0.1,logfc.threshold = 0.1)
+c7.epi$ratio = c7.epi$pct.1/c7.epi$pct.2
+c7.epi$power = c7.epi$ratio*c7.epi$avg_log2FC
+write.csv(c7.epi, file = "c7.epi_11-22-2024.csv", row.names = TRUE)
+# Top markers
+top10_c7.epi = c7.epi %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+DoHeatmap(cluster_7_obj, features = top10_c7.epi$gene) 
+```
+
+Markers on this sub-cluster (cluster 7). Talk about a replicate...
+```{r}
+# Visualize the subclusters using UMAP or t-SNE
+p0 = FeaturePlot(cluster_7_obj, features = c("Sox9","Scgb3a2","Pou2f3","Krt8","Krt18","Pdpn","Abca3","Ager","Ccdc153","Trpm5",
+                                    "Dclk1","Sox2","Scgb1a1","Nkx2-1","Sftpc","Sftpb"))
+ggsave("BAL_3_sub.cluster_epi.prog.png", p0, dpi = 600, width = 14, height = 11)
+```
+
+Cluster 7: Epithelial Progenitors
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+# Generate FeaturePlots for sub_BAL_2_obj
+plots_BAL_3 <- FeaturePlot(sub_BAL_3_obj, features = c("Krt8", "Krt18", "Sox2", "Nkx2-1","Pou2f3","Ccdc153"), label = TRUE) &
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for BAL_2
+title_BAL_3 <- ggplot() + 
+  ggtitle("sub_BAL_3_obj") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2))) # Minimal bottom margin
+# Combine title and BAL_3 FeaturePlots with tighter spacing
+plot_BAL_3 <- (title_BAL_3 / plots_BAL_3) + plot_layout(heights = c(0.05, 1)) # Minimized title height
+# Generate FeaturePlots for lung.combined
+plots_lung_combined <- FeaturePlot(lung.combined, features = c("Krt8", "Krt18", "Sox2", "Nkx2-1","Pou2f3","Ccdc153"), label = TRUE) & scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for lung.combined
+title_lung_combined <- ggplot() + 
+  ggtitle("lung.combined") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2)))
+plot_lung_combined <- (title_lung_combined / plots_lung_combined) + plot_layout(heights = c(0.05, 1))
+# Arrange both groups side by side
+final_plot <- plot_BAL_3 | plot_lung_combined
+# Display the final combined plot
+print(final_plot)
+ggsave("BAL_3_c7.w.native_epi.prog.png", final_plot, dpi = 600, width = 30, height = 20)
+```
+
+
+Cluster 8: Monocytes
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+# Generate FeaturePlots for sub_BAL_2_obj
+plots_BAL_3 <- FeaturePlot(sub_BAL_3_obj, features = c("Adgre1", "Nrp1", "S1pr5", "Dgkg"), label = TRUE, max.cutoff = 1, order = T) &
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for BAL_2
+title_BAL_3 <- ggplot() + 
+  ggtitle("sub_BAL_3_obj") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2))) # Minimal bottom margin
+# Combine title and BAL_3 FeaturePlots with tighter spacing
+plot_BAL_3 <- (title_BAL_3 / plots_BAL_3) + plot_layout(heights = c(0.05, 1)) # Minimized title height
+# Generate FeaturePlots for lung.combined
+plots_lung_combined <- FeaturePlot(lung.combined, features = c("Adgre1", "Nrp1", "S1pr5", "Dgkg"), label = TRUE) & scale_color_gradientn(colors = RColorBrewer::brewer.pal(n = 11, name = "Spectral"))
+# Add title for lung.combined
+title_lung_combined <- ggplot() + 
+  ggtitle("lung.combined") + 
+  theme_void() +
+  theme(plot.title = element_text(size = 16, hjust = 0.5, face = "bold", margin = margin(b = 2)))
+plot_lung_combined <- (title_lung_combined / plots_lung_combined) + plot_layout(heights = c(0.05, 1))
+# Arrange both groups side by side
+final_plot <- plot_BAL_3 | plot_lung_combined
+# Display the final combined plot
+print(final_plot)
+ggsave("BAL_3_c8.w.native_mono.png", final_plot, dpi = 600, width = 22, height = 10)
+```
+
+Annotating the Clusters
+```{r}
+# Annotating the clusters
+cluster0.1.2_alv.mac = WhichCells(sub_BAL_3_obj, idents = c(0, 1, 2))
+cluster3_cellcycle = WhichCells(sub_BAL_3_obj, idents = c(3))
+cluster4.inter.mac = WhichCells(sub_BAL_3_obj, idents = c(4))
+cluster5.bcells = WhichCells(sub_BAL_3_obj, idents = c(5))
+cluster6.tcells = WhichCells(sub_BAL_3_obj, idents = c(6))
+cluster7.epi.prog = WhichCells(sub_BAL_3_obj, idents = c(7))
+cluster8.mono = WhichCells(sub_BAL_3_obj, idents = c(8))
+
+sub_BAL_3_obj = SetIdent(sub_BAL_3_obj, cells = cluster0.1.2_alv.mac, value = 'Alveolar Macrophages')
+sub_BAL_3_obj = SetIdent(sub_BAL_3_obj, cells = cluster3_cellcycle, value = 'Cell Cycle')
+sub_BAL_3_obj = SetIdent(sub_BAL_3_obj, cells = cluster4.inter.mac, value = 'Interstitial Macrophages')
+sub_BAL_3_obj = SetIdent(sub_BAL_3_obj, cells = cluster5.bcells, value = 'B Cells')
+sub_BAL_3_obj = SetIdent(sub_BAL_3_obj, cells = cluster6.tcells, value = 'T Cells')
+sub_BAL_3_obj = SetIdent(sub_BAL_3_obj, cells = cluster7.epi.prog, value = 'Epithelial Progenitors')
+sub_BAL_3_obj = SetIdent(sub_BAL_3_obj, cells = cluster8.mono, value = 'Monocytes')
+```
+
+Saving annotations as meta-data slot
+```{r}
+# Save as metadata slot
+sub_BAL_3_obj$rough.annos1 = Idents(sub_BAL_3_obj)
+table(sub_BAL_3_obj$rough.annos1)
+# Check meta data
+View(sub_BAL_3_obj[[]])
+```
+
+Making new UMAP with annotations
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+# Define a vector of custom colors - we need 9
+custom_global = c(
+  "Alveolar Macrophages" = "#00CED1",
+  "Interstitial Macrophages" = "#005F73",
+  "B Cells" = "#6F7D5F",
+  "Cell Cycle" = "#388E3C",
+  "T Cells" = "#118AB2",
+  "Epithelial Progenitors" = "#E52A39",
+  "Monocytes" = "#FFB200") 
+# Plot UMAP with custom color palette
+umap_plot_annos1 <- DimPlot(sub_BAL_3_obj, 
+                            reduction = "umap", 
+                            group.by = "rough.annos1", 
+                            pt.size = 0.5, 
+                            cols = custom_global)
+UMAP_BAL_3 <- umap_plot_annos1 + 
+  theme(legend.position = "right", 
+        axis.text = element_text(size = 14),  # Adjust axis text size
+        legend.text = element_text(size = 14)) +  # Adjust legend text size
+  ggtitle("BAL_3") +  # Add title
+  annotate("text", x = Inf, y = -Inf, label = "nCells: 10041", vjust = -1.5, hjust = 1.5, size = 5) 
+# Print the plot
+print(UMAP_BAL_3)
+width_in_inches = 12
+height_in_inches = 10
+dpi = 300
+# Save the plot as a high-resolution image
+ggsave(filename = "UMAP_BAL_3_11-22-2024.png", 
+       plot = UMAP_BAL_3, 
+       width = width_in_inches, 
+       height = height_in_inches, 
+       dpi = dpi, 
+       units = "in")
+```
+
+Cell-Cycle Scoring and Analysis (START)
+```{r}
+# Cell Cycle Scoring/Analysis
+s.genes = cc.genes$s.genes
+g2m.genes = cc.genes$g2m.genes
+sub_BAL_3_obj = CellCycleScoring(sub_BAL_3_obj, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+table(sub_BAL_3_obj@meta.data$Phase)
+```
+
+Cell Cycle Scoring UMAP
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+# Create umap with cell cycle scoring
+colors <- c( "S" = "#16CEA6","G1" = "#D2691E","G2M" = "#AEC5EB")
+sub_BAL_3_obj = CellCycleScoring(sub_BAL_3_obj, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+cell_cycle_umap = DimPlot(sub_BAL_3_obj, 
+                          reduction = "umap", 
+                          group.by = "Phase", 
+                          pt.size = 0.5, 
+                          cols = colors,  # custom color palette
+                          label = FALSE)
+cell_cycle_umap = cell_cycle_umap + 
+  theme(legend.position = "right",  
+        legend.text = element_text(size = 14))  
+# Print the plot
+print(cell_cycle_umap)
+width_in_inches = 12
+height_in_inches = 7
+dpi = 300
+# Save the plot as a high-resolution image
+ggsave(filename = "cellcycle.umap_BAL_3_obj.png", 
+       plot = cell_cycle_umap, 
+       width = width_in_inches, 
+       height = height_in_inches, 
+       dpi = dpi, 
+       units = "in")
+```
+
+Now, I want to clean up my object a bit by adding a Condition Meta-data slot, removing the unneeded resolution columns, and added a replicate no. slot. 
+```{r}
+# Create a copy of the original Seurat object
+BAL_3 <- sub_BAL_3_obj
+# Remove metadata columns we don't need
+metadata_to_remove <- c("RNA_snn_res.5","old.ident")
+BAL_3@meta.data <- BAL_3@meta.data[, !names(BAL_3@meta.data) %in% metadata_to_remove]
+# Add new metadata columns
+BAL_3$Condition <- "BAL"
+BAL_3$`Replicate No.` <- 3
+BAL_3$`Orig. ID` <- "BAL_3"
+# Check the modified metadata
+str(BAL_3@meta.data)
+# Fixing object variable structure for future merging
+BAL_3$Phase <- as.factor(BAL_3$Phase)
+BAL_3$`Orig. ID` <- as.factor(BAL_3$`Orig. ID`)
+BAL_3$`Replicate No.` <- as.factor(BAL_3$`Replicate No.`)
+BAL_3$Condition <- as.factor(BAL_3$Condition)
+# Check the modified metadata structure
+str(BAL_3@meta.data)
+# Finally, this is super specific and nit-picky, but I want to reorder my meta-data slots
+order <- c("orig.ident", "Orig. ID", "Condition", "Replicate No.", 
+                   "nCount_RNA", "nFeature_RNA", "percent.mt", 
+                   "seurat_clusters", "RNA_snn_res.0.3", "stash", 
+                   "CellClass", "rough.annos1", "S.Score", 
+                   "G2M.Score", "Phase")
+# Reorder the metadata
+BAL_3@meta.data <- BAL_3@meta.data[, order]
+# Check the modified metadata structure
+str(BAL_3@meta.data)
+```
+
+Saving this cleaned and organized object
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BAL/BAL_3/")
+# Saving with new cell cycle scoring analysis
+save(BAL_3, file = "BAL_3_11-22-2024.Robj")
+```
