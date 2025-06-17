@@ -1,0 +1,519 @@
+---
+title: "Untitled"
+author: "Sophie Edelstein"
+date: "2025-01-23"
+output: html_document
+---
+
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 100)
+knitr::opts_chunk$set(error = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r, echo=FALSE}
+# close all, clear all
+graphics.off()  
+rm(list = ls())
+# declare directory where data-file is stored
+setwd("/Volumes/Home/RaredonLab-CC1126-MEDANE/Raredon_Lab_Data_Library/Sample_Library/BAL3D_3/BAL3D_3_RHT_cellranger/raw_feature_bc_matrix")
+```
+
+
+## This markdown document will go through the cleaning and clustering of the third replicate of the BAL_3D organoids (BAL_3D_3)
+
+```{r}
+# Load necessary packages
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+```
+
+```{r}
+library(Seurat)
+library(ggplot2)
+# Define the custom FeaturePlot function
+customFeaturePlot <- function(seurat_object, feature_limits = list(nFeature_RNA = c(0, 7000), nCount_RNA = c(0, 20000), percent_mt = c(0, 70))) {
+  # Create the FeaturePlot
+  p <- FeaturePlot(seurat_object, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+  # Adjust the color scale limits for each plot
+  p[[1]] <- p[[1]] + scale_colour_gradientn(limits = feature_limits$nFeature_RNA, colours = c("yellow", "red"))
+  p[[2]] <- p[[2]] + scale_colour_gradientn(limits = feature_limits$nCount_RNA, colours = c("yellow", "red"))
+  p[[3]] <- p[[3]] + scale_colour_gradientn(limits = feature_limits$percent_mt, colours = c("yellow", "red"))
+  # Print the plots
+  print(p)
+}
+```
+
+Creating our initial Seurat object with the raw data
+```{r}
+# Load in data for this sample using Read10X (raw data)
+BAL_3D_3 = Read10X(data.dir = "/Volumes/Home/RaredonLab-CC1126-MEDANE/Raredon_Lab_Data_Library/Sample_Library/BAL3D_3/BAL3D_3_RHT_cellranger/raw_feature_bc_matrix")
+# Create Seurat object
+BAL_3D_3 = CreateSeuratObject(counts = BAL_3D_3, 
+                                   project = "BAL3D_3", min.cells = 3, 
+                                   min.features = 50)
+# Calculating the percentage of mitochondrial genes for each cell in the Seurat object
+# Then we assign the values to metadata column called "percent.mt
+BAL_3D_3[["percent.mt"]] = PercentageFeatureSet(BAL_3D_3, pattern = "^Mt-")
+# How many cells?
+BAL_3D_3
+# 18778 features across 62438 samples within 1 assay 
+# Let's visualize what the data looks like
+VlnPlot(BAL_3D_3, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+# On the log scale; this will compress our data and make it easier to interpret
+VlnPlot(BAL_3D_3, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, log = TRUE)
+```
+
+## Now that we have visualized our data, we want to filter out some of the junk, but we will do this conservatively so as to not get rid of valuable information that may be hidden. 
+
+First, let's filter by nCount_RNA
+```{r}
+# Filtering the object by nCount_RNA
+BAL_3D_3 = subset(BAL_3D_3, nCount_RNA > 400) # was 500
+VlnPlot(BAL_3D_3, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+VlnPlot(BAL_3D_3, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, log = TRUE)
+# How many cells?
+BAL_3D_3
+# 18778 features across 5046 samples within 1 assay 
+```
+
+Now, let's refine a bit more so we will use nFeature_RNA
+```{r}
+# Filtering the object by nFeature_RNA
+BAL_3D_3 = subset(BAL_3D_3, nFeature_RNA > 150)
+VlnPlot(BAL_3D_3, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+VlnPlot(BAL_3D_3, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, log = TRUE)
+# How many cells?
+BAL_3D_3
+# 18778 features across 4930 samples within 1 assay 
+```
+Now, we need to normalize and scale our data. Remember to do this every time you remove (or subset) the data. Why? Because each time we remove a subset of cells, the standard deviation and mean will change. We want this to be accurate for the object each time we run any tests or dimensional reduction algorithms (such as PCA)
+
+```{r}
+# Set working directory to the Mono BASC Organoid Folder (at large)
+setwd("/Volumes/Home/RaredonLab-CC1126-MEDANE/Raredon_Lab_Personal_Folders/Sophie/Single Cell/Sample Analysis/BAL3D/BAL3D_Rep3")
+# Normalizing the data
+BAL_3D_3 = NormalizeData(BAL_3D_3)
+# Scale the data first. This creates the final matrix
+BAL_3D_3 = ScaleData(BAL_3D_3)
+# Finding variable features
+BAL_3D_3 = FindVariableFeatures(BAL_3D_3)
+```
+
+Principal Component Analysis Round 1
+```{r}
+# Principle component analysis
+BAL_3D_3 = RunPCA(BAL_3D_3, npcs = 100)
+# Visualizing the PCAs
+# This will save the top 100 PCs as heatmaps in a single pdf to the working directory 
+pdf(file='BAL_3D_3_01-23-2025.pdf', width=10, height=8)
+ElbowPlot(BAL_3D_3,ndims = 100)
+PCHeatmap(BAL_3D_3,cells=200,balanced=T,dims=1:9)
+PCHeatmap(BAL_3D_3,cells=200,balanced=T,dims=10:18)
+PCHeatmap(BAL_3D_3,cells=200,balanced=T,dims=19:27)
+PCHeatmap(BAL_3D_3,cells=200,balanced=T,dims=28:36)
+PCHeatmap(BAL_3D_3,cells=200,balanced=T,dims=37:45)
+PCHeatmap(BAL_3D_3,cells=200,balanced=T,dims=46:54)
+PCHeatmap(BAL_3D_3,cells=200,balanced=T,dims=55:63)
+PCHeatmap(BAL_3D_3,cells=200,balanced=T,dims=64:72)
+PCHeatmap(BAL_3D_3,cells=200,balanced=T,dims=73:81)
+PCHeatmap(BAL_3D_3,cells=200,balanced=T,dims=82:90)
+PCHeatmap(BAL_3D_3,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+Look at the PCs and decide where you should make your cut-off for the intial embedding. Again, some people may use the Elbow Plot, but you should also look closely at the individual PCs. What genes do you recognize? What genes do you think are revelant to this system given your knowledge of native rat lung biology?
+
+Here, we are deciding to cutoff at 23 PCs for this intial embedding.
+```{r}
+# UMAP - I have chosen an intial cutoff at 23 PCs
+BAL_3D_3 = RunUMAP(BAL_3D_3, dims = 1:23)
+DimPlot(BAL_3D_3)
+# Cluster data (creating nearest neighbor graph, not clustering)
+# Note; dims should match the number of PCs used for intial embedding
+BAL_3D_3 = FindNeighbors(BAL_3D_3, dims = 1:23)
+# Defining clusters - using res of 0.2 for this inital clustering
+BAL_3D_3 = FindClusters(BAL_3D_3, res = 6.5)
+DimPlot(BAL_3D_3)
+```
+
+Adding this plot early on to show myself that there really are no mesenchymal or endothelial cells in this sample...
+```{r}
+FeaturePlot(BAL_3D_3, features = c("Epcam", "Cdh5", "Col1a1", "Ptprc"), label = TRUE)
+customFeaturePlot(BAL_3D_3)
+```
+
+Removing clusters 1, 28, 44, 13, 48, 25, 53
+```{r}
+BAL_3D_3_1 = subset(BAL_3D_3, idents = c("1","28","44","13","48","25","53"), invert=TRUE)
+customFeaturePlot(BAL_3D_3_1)
+```
+
+Because we have removed clusters, we need to rescale and re-normalize 
+```{r}
+# Rescaling after first trimming
+BAL_3D_3_1 = ScaleData(BAL_3D_3_1)
+# Normalizing the data
+BAL_3D_3_1 = NormalizeData(BAL_3D_3_1)
+# Finding variable features
+BAL_3D_3_1 = FindVariableFeatures(BAL_3D_3_1)
+```
+
+PCA Round 2
+```{r}
+# Running PCA again with our new subset object 
+BAL_3D_3_1 = RunPCA(BAL_3D_3_1, npcs = 100)
+pdf(file='BAL_3D_3_1_01-23-2025.pdf',width=10,height=8)
+ElbowPlot(BAL_3D_3_1,ndims = 100)
+PCHeatmap(BAL_3D_3_1,cells=200,balanced=T,dims=1:9)
+PCHeatmap(BAL_3D_3_1,cells=200,balanced=T,dims=10:18)
+PCHeatmap(BAL_3D_3_1,cells=200,balanced=T,dims=19:27)
+PCHeatmap(BAL_3D_3_1,cells=200,balanced=T,dims=28:36)
+PCHeatmap(BAL_3D_3_1,cells=200,balanced=T,dims=37:45)
+PCHeatmap(BAL_3D_3_1,cells=200,balanced=T,dims=46:54)
+PCHeatmap(BAL_3D_3_1,cells=200,balanced=T,dims=55:63)
+PCHeatmap(BAL_3D_3_1,cells=200,balanced=T,dims=64:72)
+PCHeatmap(BAL_3D_3_1,cells=200,balanced=T,dims=73:81)
+PCHeatmap(BAL_3D_3_1,cells=200,balanced=T,dims=82:90)
+PCHeatmap(BAL_3D_3_1,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+Now, let's look at the PCs and decide on a cutoff. We will then use this cutoff for our new embedding and clustering
+
+Here, we are choosing 21 PCs
+```{r}
+BAL_3D_3_1 = RunUMAP(BAL_3D_3_1, dims = 1:21)
+DimPlot(BAL_3D_3_1)
+# Creating nearest neighbor graph, not clustering
+BAL_3D_3_1 = FindNeighbors(BAL_3D_3_1, dims = 1:21)
+# Defining clusters - high res to very finely remove low-info reads
+BAL_3D_3_1 = FindClusters(BAL_3D_3_1, res = 8.2)
+# Visualize the clustering
+DimPlot(BAL_3D_3_1, label = TRUE)
+FeaturePlot(BAL_3D_3_1, features = c("Epcam", "Cdh5", "Col1a1", "Ptprc"), label = TRUE)
+```
+
+Now, look at the data quality to see what clusters to remove next.
+```{r}
+FeaturePlot(BAL_3D_3_1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+VlnPlot(BAL_3D_3_1, features = "percent.mt")
+FeaturePlot(BAL_3D_3_1, features = "nFeature_RNA", label = TRUE)
+FeaturePlot(BAL_3D_3_1, features = "percent.mt", label = TRUE)
+customFeaturePlot(BAL_3D_3_1)
+FeaturePlot(BAL_3D_3_1, features = c("Epcam", "Ptprc"), label = TRUE)
+```
+Get rid of clusters
+```{r}
+BAL_3D_3.2 = subset(BAL_3D_3_1, idents = c("11","19","28","14",
+                                           "4","43","46","47"), invert=TRUE)
+FeaturePlot(BAL_3D_3.2, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, 
+            label = TRUE)
+customFeaturePlot(BAL_3D_3.2)
+DimPlot(BAL_3D_3.2, label = TRUE)
+```
+
+Rescaling and re-normalizing - Round 3
+```{r}
+BAL_3D_3.2 = ScaleData(BAL_3D_3.2)
+# Normalizing the data
+BAL_3D_3.2 = NormalizeData(BAL_3D_3.2)
+# Finding variable features
+BAL_3D_3.2 = FindVariableFeatures(BAL_3D_3.2)
+```
+
+PCA Round 3
+```{r}
+BAL_3D_3.2 = RunPCA(BAL_3D_3.2, npcs = 100)
+# PCA - Saving as pdf to view individual PCs
+pdf(file='BAL_3D_3.2_01-23-2025.pdf',width=10,height=8)
+ElbowPlot(BAL_3D_3.2,ndims = 100)
+PCHeatmap(BAL_3D_3.2,cells=200,balanced=T,dims=1:9)
+PCHeatmap(BAL_3D_3.2,cells=200,balanced=T,dims=10:18)
+PCHeatmap(BAL_3D_3.2,cells=200,balanced=T,dims=19:27)
+PCHeatmap(BAL_3D_3.2,cells=200,balanced=T,dims=28:36)
+PCHeatmap(BAL_3D_3.2,cells=200,balanced=T,dims=37:45)
+PCHeatmap(BAL_3D_3.2,cells=200,balanced=T,dims=46:54)
+PCHeatmap(BAL_3D_3.2,cells=200,balanced=T,dims=55:63)
+PCHeatmap(BAL_3D_3.2,cells=200,balanced=T,dims=64:72)
+PCHeatmap(BAL_3D_3.2,cells=200,balanced=T,dims=73:81)
+PCHeatmap(BAL_3D_3.2,cells=200,balanced=T,dims=82:90)
+PCHeatmap(BAL_3D_3.2,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+Creating new embedding based on new set of PCs. Choosing PC cutoff of 18
+```{r}
+# Look at PCs and decide cutoff - I am choosing 18
+BAL_3D_3.2 = RunUMAP(BAL_3D_3.2, dims = 1:18)
+DimPlot(BAL_3D_3.2)
+# Creating nearest neighbor graph, not clustering
+BAL_3D_3.2 = FindNeighbors(BAL_3D_3.2, dims = 1:18)
+# Defining clusters - high res to very finely remove low-info reads
+BAL_3D_3.2 = FindClusters(BAL_3D_3.2, res = 10.2)
+# Visualize the clustering
+DimPlot(BAL_3D_3.2, label = TRUE)
+FeaturePlot(BAL_3D_3.2, features = c("Epcam", "Cdh5", "Col1a1", "Ptprc"), label = TRUE)
+```
+
+Checking data quality for cluster removal
+```{r}
+FeaturePlot(BAL_3D_3.2, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+            ncol = 3, label = TRUE)
+VlnPlot(BAL_3D_3.2, features = "percent.mt")
+FeaturePlot(BAL_3D_3.2, features = "nFeature_RNA", label = TRUE)
+FeaturePlot(BAL_3D_3.2, features = "percent.mt", label = TRUE)
+customFeaturePlot(BAL_3D_3.2)
+FeaturePlot(BAL_3D_3.2, features = c("Epcam", "Ptprc"), label = TRUE)
+```
+
+Get rid of cluster 3, 60, 7
+```{r}
+BAL_3D_3.3 = subset(BAL_3D_3.2, idents = c("60","3","7"),
+                                                          invert=TRUE)
+FeaturePlot(BAL_3D_3.3, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, 
+            label = TRUE)
+FeaturePlot(BAL_3D_3.3, features = "nFeature_RNA", label = TRUE)
+FeaturePlot(BAL_3D_3.3, features = "percent.mt", label = TRUE)
+customFeaturePlot(BAL_3D_3.3)
+```
+
+How many cells are remaining? 18778 features across 3539 samples within 1 assay
+```{r}
+BAL_3D_3.3
+```
+
+Rescale and renormalize the data
+```{r}
+# Rescale the data
+BAL_3D_3.3 = ScaleData(BAL_3D_3.3)
+# Normalizing the data
+BAL_3D_3.3 = NormalizeData(BAL_3D_3.3)
+# Finding variable features
+BAL_3D_3.3 = FindVariableFeatures(BAL_3D_3.3)
+```
+
+PCA Round 4
+```{r}
+BAL_3D_3.3 = RunPCA(BAL_3D_3.3, npcs = 100)
+# Visualizing the PCAs
+pdf(file='BAL_3D_3.3_01-23-2025.pdf',width=10,height=8)
+ElbowPlot(BAL_3D_3.3,ndims = 100)
+PCHeatmap(BAL_3D_3.3,cells=200,balanced=T,dims=1:9)
+PCHeatmap(BAL_3D_3.3,cells=200,balanced=T,dims=10:18)
+PCHeatmap(BAL_3D_3.3,cells=200,balanced=T,dims=19:27)
+PCHeatmap(BAL_3D_3.3,cells=200,balanced=T,dims=28:36)
+PCHeatmap(BAL_3D_3.3,cells=200,balanced=T,dims=37:45)
+PCHeatmap(BAL_3D_3.3,cells=200,balanced=T,dims=46:54)
+PCHeatmap(BAL_3D_3.3,cells=200,balanced=T,dims=55:63)
+PCHeatmap(BAL_3D_3.3,cells=200,balanced=T,dims=64:72)
+PCHeatmap(BAL_3D_3.3,cells=200,balanced=T,dims=73:81)
+PCHeatmap(BAL_3D_3.3,cells=200,balanced=T,dims=82:90)
+PCHeatmap(BAL_3D_3.3,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+Re-embedding and re-clustering with 21 PCs
+```{r}
+BAL_3D_3.3 = RunUMAP(BAL_3D_3.3, dims = c(1:21))
+DimPlot(BAL_3D_3.3, label = TRUE)
+# Creating nearest neighbor graph, not clustering.
+BAL_3D_3.3 = FindNeighbors(BAL_3D_3.3, dims = c(1:21))
+# Defining clusters - very high res. There is purpose in doing this.
+BAL_3D_3.3 = FindClusters(BAL_3D_3.3, res = 0.5)
+DimPlot(BAL_3D_3.3, label = TRUE)
+FeaturePlot(BAL_3D_3.3, features = c("Epcam", "Cdh5", "Col1a1", "Ptprc"), label = TRUE)
+```
+Remove cluster 9
+```{r}
+BAL_3D_3.4 = subset(BAL_3D_3.3, idents = c("9"), invert=TRUE)
+FeaturePlot(BAL_3D_3.4, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+customFeaturePlot(BAL_3D_3.4)
+FeaturePlot(BAL_3D_3.4, features = c("Epcam", "Col1a1", "Ptprc"), label = TRUE)
+VlnPlot(BAL_3D_3.4, features = c("nFeature_RNA","nCount_RNA","percent.mt"), ncol = 1)
+```
+
+```{r}
+# Rescale the data
+BAL_3D_3.4 = ScaleData(BAL_3D_3.4)
+# Normalizing the data
+BAL_3D_3.4 = NormalizeData(BAL_3D_3.4)
+# Find variable features
+BAL_3D_3.4 = FindVariableFeatures(BAL_3D_3.4)
+```
+
+PCA Round 5
+```{r}
+BAL_3D_3.4 = RunPCA(BAL_3D_3.4, npcs = 100)
+# Visualizing the PCAs
+pdf(file='BAL_3D_3.4_01-23-2025.pdf',width=10,height=8)
+ElbowPlot(BAL_3D_3.4,ndims = 100)
+PCHeatmap(BAL_3D_3.4,cells=200,balanced=T,dims=1:9)
+PCHeatmap(BAL_3D_3.4,cells=200,balanced=T,dims=10:18)
+PCHeatmap(BAL_3D_3.4,cells=200,balanced=T,dims=19:27)
+PCHeatmap(BAL_3D_3.4,cells=200,balanced=T,dims=28:36)
+PCHeatmap(BAL_3D_3.4,cells=200,balanced=T,dims=37:45)
+PCHeatmap(BAL_3D_3.4,cells=200,balanced=T,dims=46:54)
+PCHeatmap(BAL_3D_3.4,cells=200,balanced=T,dims=55:63)
+PCHeatmap(BAL_3D_3.4,cells=200,balanced=T,dims=64:72)
+PCHeatmap(BAL_3D_3.4,cells=200,balanced=T,dims=73:81)
+PCHeatmap(BAL_3D_3.4,cells=200,balanced=T,dims=82:90)
+PCHeatmap(BAL_3D_3.4,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+New embedding, cutting off at 20 PCs based on PCA output above.
+```{r}
+BAL_3D_3.4 = RunUMAP(BAL_3D_3.4, dims = c(1:22))
+DimPlot(BAL_3D_3.4, label = TRUE)
+# Creating nearest neighbor graph, not clustering.
+BAL_3D_3.4 = FindNeighbors(BAL_3D_3.4, dims = c(1:22))
+# Defining clusters - very high res. There is purpose in doing this.
+BAL_3D_3.4 = FindClusters(BAL_3D_3.4, res = 0.5)
+DimPlot(BAL_3D_3.4, label = TRUE)
+```
+
+```{r}
+FeaturePlot(BAL_3D_3.4, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+customFeaturePlot(BAL_3D_3.4)
+FeaturePlot(BAL_3D_3.4, features = c("Epcam", "Ptprc"), label = TRUE)
+```
+
+Classing by canonical markers
+```{r}
+FeaturePlot(BAL_3D_3.4, features = c("Epcam", "Col1a1", "Ptprc"), label = TRUE)
+# Stash clusters
+BAL_3D_3.4$stash = Idents(BAL_3D_3.4)
+```
+
+Labeling the clusters based on canonical marker classification above
+```{r}
+cell.epi = WhichCells(BAL_3D_3.4, idents = c(0,1,2,3,4,5,7,8))
+cell.imm = WhichCells(BAL_3D_3.4, idents = c(6))
+
+BAL_3D_3.4 = SetIdent(BAL_3D_3.4, cells = cell.epi, value = 'Epithelium')
+BAL_3D_3.4 = SetIdent(BAL_3D_3.4, cells = cell.imm, value = 'Immune')
+```
+
+New feature plot with cell class labels
+```{r}
+# New feature plot with cell classes
+FeaturePlot(BAL_3D_3.4, features = c("Epcam", "Ptprc"), label = TRUE)
+```
+
+Stash the cell class labels and ensure everything is labeled
+```{r}
+# Stash the cell class
+BAL_3D_3.4$CellClass = Idents(BAL_3D_3.4)
+table(BAL_3D_3.4$CellClass)
+# confirming that everything is labeled
+sum(is.na(BAL_3D_3.4$CellClass))
+```
+
+Restore the cluster labels
+```{r}
+# Restores the cell identities that were previously stashed or stored elsewhere.
+Idents(BAL_3D_3.4) = BAL_3D_3.4$stash
+table(Idents(BAL_3D_3.4))
+```
+
+Create a marker list for differential gene expression analysis
+```{r}
+# Running differential expression; look at FindAllMarkers
+mark = FindAllMarkers(BAL_3D_3.4, min.pct = 0.1,logfc.threshold = 0.1)
+mark$ratio = mark$pct.1/mark$pct.2
+mark$power = mark$ratio*mark$avg_log2FC
+write.csv(mark, file = "BAL_3D_3.4_DEG_01-23-2025.csv", row.names = TRUE)
+# Top markers
+top10_mark =  mark %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+DoHeatmap(BAL_3D_3.4, features = top10_mark$gene) 
+write.csv(top10_mark, file = "top10_BAL_3D_3.4_DEG_01-23-2025.csv", row.names = TRUE)
+```
+
+```{r}
+DimPlot(BAL_3D_3.4, label = T)
+FeaturePlot(BAL_3D_3.4, features = c("Pdpn","Sftpc","Muc5b","Ager","Abca3",""))
+```
+
+Cluster 0 = ATI-Like
+Clusters 1 + 2 = ATII_Like
+Cluster 3 = Hypoxic_ATII_Like
+Cluster 4 = Basal
+Cluster 5 = Basal
+Cluster 6 = Anti-Inflammatory Mac
+Cluster 7 = Hillock_Basal
+Cluster 8 = RAS_Like
+
+# Adding Annotations and Saving as Meta-Data Slot
+```{r}
+# First, look at existing meta-data for object
+View(BAL_3D_3.4[[]])
+# Now adding annotations
+cluster0.ATI = WhichCells(BAL_3D_3.4, idents = c(0))
+cluster1.2.ATII = WhichCells(BAL_3D_3.4, idents = c(1,2))
+cluster3.hypo_ATII = WhichCells(BAL_3D_3.4, idents = c(3))
+cluster4.5_basal = WhichCells(BAL_3D_3.4, idents = c(4,5))
+cluster6.anti.inflamm = WhichCells(BAL_3D_3.4, idents = c(6))
+cluster7.hillock_bas = WhichCells(BAL_3D_3.4, idents = c(7))
+cluster8.RASC.like = WhichCells(BAL_3D_3.4, idents = c(8))
+
+# Taking clusters and assigning labels for meta-data
+BAL_3D_3.4 = SetIdent(BAL_3D_3.4, cells = cluster0.ATI, value = 'ATI_Like')
+BAL_3D_3.4 = SetIdent(BAL_3D_3.4, cells = cluster1.2.ATII, value = 'ATII_Like')
+BAL_3D_3.4 = SetIdent(BAL_3D_3.4, cells = cluster3.hypo_ATII, value = 'Hypoxic_ATII')
+BAL_3D_3.4 = SetIdent(BAL_3D_3.4, cells = cluster4.5_basal, value = 'Basal_Like')
+BAL_3D_3.4 = SetIdent(BAL_3D_3.4, cells = cluster6.anti.inflamm, value = 'Anti_Inflamm_Mac')
+BAL_3D_3.4 = SetIdent(BAL_3D_3.4, cells = cluster7.hillock_bas, value = 'Hillock_Basal')
+BAL_3D_3.4 = SetIdent(BAL_3D_3.4, cells = cluster8.RASC.like, value = 'RAS_Like')
+
+# Save as meta-data slot
+BAL_3D_3.4$rough.annos1 = Idents(BAL_3D_3.4)
+table(BAL_3D_3.4$rough.annos1)
+```
+
+# Confirming that annotations have been stored as meta-data
+```{r}
+View(BAL_3D_3.4[[]])
+head(BAL_3D_3.4@meta.data$rough.annos1)
+```
+
+# Cell Cycle Scoring & Prelim Analysis
+```{r}
+# Cell Cycle Scoring/Analysis
+# Saving with new cell cycle scoring analysis
+s.genes = cc.genes$s.genes
+g2m.genes = cc.genes$g2m.genes
+BAL_3D_3.4 = CellCycleScoring(BAL_3D_3.4, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+table(BAL_3D_3.4@meta.data$Phase)
+```
+
+```{r}
+# Remove specified columns from the Seurat object's metadata
+columns_to_remove <- c("RNA_snn_res.10.2", "RNA_snn_res.8.2", "old.ident", "RNA_snn_res.6.5")
+# Update metadata by excluding the unwanted columns
+BAL_3D_3.4@meta.data <- BAL_3D_3.4@meta.data[, !colnames(BAL_3D_3.4@meta.data) %in% columns_to_remove]
+# Verify the updated metadata structure
+str(BAL_3D_3.4@meta.data)
+```
+
+```{r}
+# Add new columns to the Seurat object's metadata
+BAL_3D_3.4@meta.data$Condition <- "BAL_3D"
+BAL_3D_3.4@meta.data$Replicate.No <- 3
+BAL_3D_3.4@meta.data$Orig_ID <- "BAL_3D_3"
+# Reorder columns to place the new ones right after 'orig.ident'
+column_order <- c("orig.ident", "Condition", "Replicate.No", "Orig_ID", setdiff(colnames(BAL_3D_3.4@meta.data), c("orig.ident", "Condition", "Replicate.No", "Orig_ID")))
+BAL_3D_3.4@meta.data <- BAL_3D_3.4@meta.data[, column_order]
+# Verify the updated metadata structure
+str(BAL_3D_3.4@meta.data)
+```
+
+Saving copy of object with the prelim annotations (rough.annos1) and cell cycling scoring
+```{r}
+setwd("/Volumes/Home/RaredonLab-CC1126-MEDANE/Raredon_Lab_Personal_Folders/Sophie/Single Cell/Sample Analysis/BAL3D/BAL3D_Rep3")
+BAL_3D_3 = BAL_3D_3.4
+# Saving with cell cycle scoring
+save(BAL_3D_3, file = 'BAL_3D_3_01-24-2025.Robj')
+```

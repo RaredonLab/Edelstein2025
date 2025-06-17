@@ -1,0 +1,1619 @@
+---
+title: "Dclk1+ Enriched Starting Pop. - Rep 3"
+author: "Sophie Edelstein"
+date: "2024-08-21"
+output: pdf_document
+---
+
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 100)
+knitr::opts_chunk$set(error = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r, echo=FALSE}
+# close all, clear all
+graphics.off()  
+rm(list = ls())
+# declare directory where data-file is stored
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Raw Data")
+```
+
+## This markdown document will go through the cleaning and clustering of the round 2 starting Dclk1+ enriched population (SEE)
+
+```{r}
+# Load necessary packages
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+```
+
+Now, we are going to create a function so that we can adjust the scale on the FeaturePlots for checking the quality of the data
+```{r}
+library(Seurat)
+library(ggplot2)
+# Define the custom FeaturePlot function
+customFeaturePlot <- function(seurat_object, feature_limits = list(nFeature_RNA = c(0, 7000), nCount_RNA = c(0, 20000), percent_mt = c(0, 50))) {
+  # Create the FeaturePlot
+  p <- FeaturePlot(seurat_object, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+  
+  # Adjust the color scale limits for each plot
+  p[[1]] <- p[[1]] + scale_colour_gradientn(limits = feature_limits$nFeature_RNA, colours = c("yellow", "red"))
+  p[[2]] <- p[[2]] + scale_colour_gradientn(limits = feature_limits$nCount_RNA, colours = c("yellow", "red"))
+  p[[3]] <- p[[3]] + scale_colour_gradientn(limits = feature_limits$percent_mt, colours = c("yellow", "red"))
+  
+  # Print the plots
+  print(p)
+}
+```
+
+Loading in our raw data and creating the initial seurat object
+```{r}
+# Load in data for this sample using Read10X (raw data)
+BASC_Start_3 = Read10X(data.dir = "~/Desktop/SE Single Cell/BASC_StartingPop_3/Raw Data/")
+# Create Seurat object
+BASC_St_3_obj = CreateSeuratObject(counts = BASC_Start_3, 
+                                   project = "BASCStObj3", min.cells = 3, 
+                                   min.features = 50)
+# Calculating the percentage of mitochondrial genes for each cell in the Seurat object
+# Then we assign the values to metadata column called "percent.mt
+BASC_St_3_obj[["percent.mt"]] = PercentageFeatureSet(BASC_St_3_obj, pattern = "^Mt-")
+# How many cells?
+BASC_St_3_obj
+# 19290 features across 90618 samples within 1 assay 
+# Let's visualize what the data looks like
+VlnPlot(BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+        ncol = 3)
+# On the log scale; this will compress our data and make it easier to interpret
+VlnPlot(BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+        ncol = 3, log = TRUE)
+```
+
+Filtering our object, first by nCount_RNA
+```{r}
+# Filtering the object by nCount_RNA
+BASC_St_3_obj = subset(BASC_St_3_obj, nCount_RNA > 1000)
+# How many cell remaining?
+BASC_St_3_obj
+# 18165 features across 10863 samples within 1 assay 
+VlnPlot(BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+# On a log scale
+VlnPlot(BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, log = TRUE)
+```
+
+Now filtering by nFeature_RNA
+```{r}
+# Filtering the object by nFeature_RNA
+BASC_St_3_obj = subset(BASC_St_3_obj, nFeature_RNA > 250)
+BASC_St_3_obj
+# 19290 features across 8510 samples within 1 assay 
+VlnPlot(BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, log = TRUE)
+```
+Resetting working directory to main project (object) folder for organizational purposes
+```{r}
+# Moving back to parent folder to keep our raw data separate and organized 
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3")
+```
+
+
+Normalizing and scaling our data (round 1)
+```{r}
+# Normalizing the data (round 1)
+BASC_St_3_obj = NormalizeData(BASC_St_3_obj)
+# Scale the data first; creates final matrix
+BASC_St_3_obj = ScaleData(BASC_St_3_obj)
+# Finding variable features
+BASC_St_3_obj = FindVariableFeatures(BASC_St_3_obj)
+```
+
+Principal Component Analysis - Round 1
+```{r}
+# Principle component analysis (round 1)
+BASC_St_3_obj = RunPCA(BASC_St_3_obj, npcs = 100)
+# Look at the PCAs generated
+pdf(file='BASC_St_3_obj_082124.pdf',width=10,height=8)
+ElbowPlot(BASC_St_3_obj,ndims = 100)
+PCHeatmap(BASC_St_3_obj,cells=200,balanced=T,dims=1:9)
+PCHeatmap(BASC_St_3_obj,cells=200,balanced=T,dims=10:18)
+PCHeatmap(BASC_St_3_obj,cells=200,balanced=T,dims=19:27)
+PCHeatmap(BASC_St_3_obj,cells=200,balanced=T,dims=28:36)
+PCHeatmap(BASC_St_3_obj,cells=200,balanced=T,dims=37:45)
+PCHeatmap(BASC_St_3_obj,cells=200,balanced=T,dims=46:54)
+PCHeatmap(BASC_St_3_obj,cells=200,balanced=T,dims=55:63)
+PCHeatmap(BASC_St_3_obj,cells=200,balanced=T,dims=64:72)
+PCHeatmap(BASC_St_3_obj,cells=200,balanced=T,dims=73:81)
+PCHeatmap(BASC_St_3_obj,cells=200,balanced=T,dims=82:90)
+PCHeatmap(BASC_St_3_obj,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+Based on the PCA we just performed, we can set a rough cutoff for our intial embedding.Choosing 26 PCs here because I want to preserve the Tuft/BASC markers
+```{r}
+# UMAP, looking at 24 PCs first
+BASC_St_3_obj = RunUMAP(BASC_St_3_obj, dims = 1:26) 
+DimPlot(BASC_St_3_obj)
+# Cluster data (creating nearest neighbor graph, not clustering)
+# dims should match dims in PCA UMAP DimPlot
+BASC_St_3_obj = FindNeighbors(BASC_St_3_obj, dims = 1:26)
+# Defining clusters
+BASC_St_3_obj = FindClusters(BASC_St_3_obj, res = 3.0)
+DimPlot(BASC_St_3_obj, label = TRUE)
+```
+
+# Checking data quality and lineage tracing so we can start finely cleaning the object
+```{r}
+# Feature plots for data quality / lineage
+FeaturePlot(BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+# Refining cutoffs by using our customFeaturePlot
+customFeaturePlot(BASC_St_3_obj)
+FeaturePlot(BASC_St_3_obj, features = "nFeature_RNA", label = TRUE)
+FeaturePlot(BASC_St_3_obj, features = "percent.mt", label = TRUE)
+# Does visualizing as a violin plot give us any more info?
+VlnPlot(BASC_St_3_obj, features = "percent.mt")
+FeaturePlot(BASC_St_3_obj, features = c("Epcam", "Ptprc", "Col1a1","Cdh5"), label = TRUE, ncol = 2)
+```
+
+Let's remove our first set of clusters: 1, 17, 15, 20, 11, and 46. These are all clusters that have high percent.mt and low features. Not removing 19, 26, 7, etc. because there is some info in all of them, despite the high percent.mt and we want to cluster to higher resolution down the line so we can preserve the small amount of high info cells.
+```{r}
+sub_BASC_St_3_obj = subset(BASC_St_3_obj, idents = c("1","17","15","20","11","46"),invert = TRUE)
+FeaturePlot(sub_BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", 
+                                            "percent.mt"), ncol = 3, label = TRUE)
+FeaturePlot(sub_BASC_St_3_obj, features = "nFeature_RNA", label = TRUE)
+FeaturePlot(sub_BASC_St_3_obj, features = "percent.mt", label = TRUE)
+```
+
+Now rescaling and renormalizing after the first cut. Make sure you do this everytime you remove clusters because when you do this, you are changing the relative structure of the data and thus need to rescale and renormalize.
+```{r}
+# Rescaling after first trimming
+sub_BASC_St_3_obj = ScaleData(sub_BASC_St_3_obj)
+# Normalizing the data
+sub_BASC_St_3_obj = NormalizeData(sub_BASC_St_3_obj)
+# Finding variable features
+sub_BASC_St_3_obj = FindVariableFeatures(sub_BASC_St_3_obj)
+```
+
+Principal Component Anlaysis (Round 2)
+```{r}
+# Running PCA again with our new subset object 
+sub_BASC_St_3_obj = RunPCA(sub_BASC_St_3_obj, npcs = 100)
+pdf(file='sub_BASC_St_3_obj_082124.pdf',width=10,height=8)
+ElbowPlot(sub_BASC_St_3_obj,ndims = 100)
+PCHeatmap(sub_BASC_St_3_obj,cells=200,balanced=T,dims=1:9)
+PCHeatmap(sub_BASC_St_3_obj,cells=200,balanced=T,dims=10:18)
+PCHeatmap(sub_BASC_St_3_obj,cells=200,balanced=T,dims=19:27)
+PCHeatmap(sub_BASC_St_3_obj,cells=200,balanced=T,dims=28:36)
+PCHeatmap(sub_BASC_St_3_obj,cells=200,balanced=T,dims=37:45)
+PCHeatmap(sub_BASC_St_3_obj,cells=200,balanced=T,dims=46:54)
+PCHeatmap(sub_BASC_St_3_obj,cells=200,balanced=T,dims=55:63)
+PCHeatmap(sub_BASC_St_3_obj,cells=200,balanced=T,dims=64:72)
+PCHeatmap(sub_BASC_St_3_obj,cells=200,balanced=T,dims=73:81)
+PCHeatmap(sub_BASC_St_3_obj,cells=200,balanced=T,dims=82:90)
+PCHeatmap(sub_BASC_St_3_obj,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+Creating our new embedding with 23 PCs
+```{r}
+# PCA round 2 - cutoff at 20 PCs
+sub_BASC_St_3_obj = RunUMAP(sub_BASC_St_3_obj, dims = 1:23)
+DimPlot(sub_BASC_St_3_obj)
+# Creating nearest neighbor graph, not clustering
+sub_BASC_St_3_obj = FindNeighbors(sub_BASC_St_3_obj, dims = 1:23)
+# Defining clusters - high res to very finely remove low-info reads
+sub_BASC_St_3_obj = FindClusters(sub_BASC_St_3_obj, res = 9.0)
+# Visualize the clustering
+DimPlot(sub_BASC_St_3_obj, label = TRUE)
+```
+
+Now, look at the data quality to see what clusters to remove next.
+```{r}
+FeaturePlot(sub_BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+            ncol = 3, label = TRUE)
+VlnPlot(sub_BASC_St_3_obj, features = "percent.mt")
+FeaturePlot(sub_BASC_St_3_obj, features = "nFeature_RNA", label = TRUE)
+FeaturePlot(sub_BASC_St_3_obj, features = "percent.mt", label = TRUE)
+customFeaturePlot(sub_BASC_St_3_obj)
+FeaturePlot(sub_BASC_St_3_obj, features = c("Epcam", "Ptprc", "Col1a1","Cdh5"), label = TRUE, ncol = 2)
+```
+
+Based on the above plots (features and counts relative to percent.mt), we will remove the following clusters: 0, 1, 21, 39, 66, 47, 41, 50, 26, 62, 37, 51, 17
+```{r}
+sub1_BASC_St_3_obj = subset(sub_BASC_St_3_obj, idents = c("0","1","21",
+                                                          "39","66","47",
+                                                          "41","50","26",
+                                                          "62","37","51",
+                                                          "17"), invert=TRUE)
+FeaturePlot(sub1_BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, 
+            label = TRUE)
+customFeaturePlot(sub1_BASC_St_3_obj)
+DimPlot(sub1_BASC_St_3_obj, label = TRUE)
+```
+Rescaling and re-normalizing - Round 3
+```{r}
+sub1_BASC_St_3_obj = ScaleData(sub1_BASC_St_3_obj)
+# Normalizing the data
+sub1_BASC_St_3_obj = NormalizeData(sub1_BASC_St_3_obj)
+# Finding variable features
+sub1_BASC_St_3_obj = FindVariableFeatures(sub1_BASC_St_3_obj)
+```
+
+PCA Round 3
+```{r}
+sub1_BASC_St_3_obj = RunPCA(sub1_BASC_St_3_obj, npcs = 100)
+# PCA - Saving as pdf to view individual PCs
+pdf(file='sub1_BASC_St_3_obj_082124.pdf',width=10,height=8)
+ElbowPlot(sub1_BASC_St_3_obj,ndims = 100)
+PCHeatmap(sub1_BASC_St_3_obj,cells=200,balanced=T,dims=1:9)
+PCHeatmap(sub1_BASC_St_3_obj,cells=200,balanced=T,dims=10:18)
+PCHeatmap(sub1_BASC_St_3_obj,cells=200,balanced=T,dims=19:27)
+PCHeatmap(sub1_BASC_St_3_obj,cells=200,balanced=T,dims=28:36)
+PCHeatmap(sub1_BASC_St_3_obj,cells=200,balanced=T,dims=37:45)
+PCHeatmap(sub1_BASC_St_3_obj,cells=200,balanced=T,dims=46:54)
+PCHeatmap(sub1_BASC_St_3_obj,cells=200,balanced=T,dims=55:63)
+PCHeatmap(sub1_BASC_St_3_obj,cells=200,balanced=T,dims=64:72)
+PCHeatmap(sub1_BASC_St_3_obj,cells=200,balanced=T,dims=73:81)
+PCHeatmap(sub1_BASC_St_3_obj,cells=200,balanced=T,dims=82:90)
+PCHeatmap(sub1_BASC_St_3_obj,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+Creating new embedding based on new set of PCs. Choosing PC cutoff of 26
+```{r}
+# Look at PCs and decide cutoff - I am choosing 26
+sub1_BASC_St_3_obj = RunUMAP(sub1_BASC_St_3_obj, dims = 1:26)
+DimPlot(sub1_BASC_St_3_obj)
+# Creating nearest neighbor graph, not clustering
+sub1_BASC_St_3_obj = FindNeighbors(sub1_BASC_St_3_obj, dims = 1:26)
+# Defining clusters - high res to very finely remove low-info reads
+sub1_BASC_St_3_obj = FindClusters(sub1_BASC_St_3_obj, res = 7.0)
+# Visualize the clustering
+DimPlot(sub1_BASC_St_3_obj, label = TRUE)
+```
+
+Checking data quality for cluster removal
+```{r}
+FeaturePlot(sub1_BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+            ncol = 3, label = TRUE)
+VlnPlot(sub1_BASC_St_3_obj, features = "percent.mt")
+FeaturePlot(sub1_BASC_St_3_obj, features = "nFeature_RNA", label = TRUE)
+FeaturePlot(sub1_BASC_St_3_obj, features = "percent.mt", label = TRUE)
+customFeaturePlot(sub1_BASC_St_3_obj)
+FeaturePlot(sub1_BASC_St_3_obj, features = c("Epcam", "Ptprc","Col1a1","Cdh5"), label = TRUE, ncol = 2)
+```
+
+Choosing to remove the following clusters: 40, 17, 48, 23, 36, 7, 18, 21
+```{r}
+sub2_BASC_St_3_obj = subset(sub1_BASC_St_3_obj, idents = c("40","17","48","21",
+                                                           "23","36","7","18"),
+                                                          invert=TRUE)
+FeaturePlot(sub2_BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, 
+            label = TRUE)
+FeaturePlot(sub2_BASC_St_3_obj, features = "nFeature_RNA", label = TRUE)
+FeaturePlot(sub2_BASC_St_3_obj, features = "percent.mt", label = TRUE)
+customFeaturePlot(sub2_BASC_St_3_obj)
+```
+
+Rescale the data
+```{r}
+# Rescale the data
+sub2_BASC_St_3_obj = ScaleData(sub2_BASC_St_3_obj)
+# Normalizing the data
+sub2_BASC_St_3_obj = NormalizeData(sub2_BASC_St_3_obj)
+# Finding variable features
+sub2_BASC_St_3_obj = FindVariableFeatures(sub2_BASC_St_3_obj)
+```
+
+PCA Round 4
+```{r}
+sub2_BASC_St_3_obj = RunPCA(sub2_BASC_St_3_obj, npcs = 100)
+# Visualizing the PCAs
+pdf(file='sub2_BASC_St_3_obj_082124.pdf',width=10,height=8)
+ElbowPlot(sub2_BASC_St_3_obj,ndims = 100)
+PCHeatmap(sub2_BASC_St_3_obj,cells=200,balanced=T,dims=1:9)
+PCHeatmap(sub2_BASC_St_3_obj,cells=200,balanced=T,dims=10:18)
+PCHeatmap(sub2_BASC_St_3_obj,cells=200,balanced=T,dims=19:27)
+PCHeatmap(sub2_BASC_St_3_obj,cells=200,balanced=T,dims=28:36)
+PCHeatmap(sub2_BASC_St_3_obj,cells=200,balanced=T,dims=37:45)
+PCHeatmap(sub2_BASC_St_3_obj,cells=200,balanced=T,dims=46:54)
+PCHeatmap(sub2_BASC_St_3_obj,cells=200,balanced=T,dims=55:63)
+PCHeatmap(sub2_BASC_St_3_obj,cells=200,balanced=T,dims=64:72)
+PCHeatmap(sub2_BASC_St_3_obj,cells=200,balanced=T,dims=73:81)
+PCHeatmap(sub2_BASC_St_3_obj,cells=200,balanced=T,dims=82:90)
+PCHeatmap(sub2_BASC_St_3_obj,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+Re-embedding w/ 25 PCs
+```{r}
+# UMAP - cutting off at 25 PCs
+sub2_BASC_St_3_obj = RunUMAP(sub2_BASC_St_3_obj, dims = 1:25)
+DimPlot(sub2_BASC_St_3_obj, label = TRUE)
+# Creating nearest neighbor graph, not clustering.
+sub2_BASC_St_3_obj = FindNeighbors(sub2_BASC_St_3_obj, dims = 1:25)
+# Defining clusters - very high res. There is purpose in doing this.
+sub2_BASC_St_3_obj = FindClusters(sub2_BASC_St_3_obj, res = 5.2)
+DimPlot(sub2_BASC_St_3_obj, label = TRUE)
+```
+Data quality for cluster removal
+```{r}
+FeaturePlot(sub2_BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+FeaturePlot(sub2_BASC_St_3_obj, features = "nFeature_RNA", label = TRUE)
+FeaturePlot(sub2_BASC_St_3_obj, features = "percent.mt", label = TRUE)
+customFeaturePlot(sub2_BASC_St_3_obj)
+FeaturePlot(sub2_BASC_St_3_obj, features = c("Epcam", "Ptprc","Col1a1","Cdh5"), label = TRUE, ncol = 2)
+```
+Removing the following clusters: 12, 20, 42, 31, 34
+```{r}
+sub3_BASC_St_3_obj = subset(sub2_BASC_St_3_obj, idents = c("12","20","42","31","34"), invert=TRUE)
+FeaturePlot(sub3_BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+customFeaturePlot(sub3_BASC_St_3_obj)
+FeaturePlot(sub3_BASC_St_3_obj, features = c("Epcam", "Ptprc","Col1a1","Cdh5"), label = TRUE, ncol = 2)
+```
+
+Re-scaling and re-normalizing for new embedding
+```{r}
+# Rescale the data
+sub3_BASC_St_3_obj = ScaleData(sub3_BASC_St_3_obj)
+# Normalizing the data
+sub3_BASC_St_3_obj = NormalizeData(sub3_BASC_St_3_obj)
+# Find variable features
+sub3_BASC_St_3_obj = FindVariableFeatures(sub3_BASC_St_3_obj)
+```
+
+PCA Round 5
+```{r}
+sub3_BASC_St_3_obj = RunPCA(sub3_BASC_St_3_obj, npcs = 100)
+# Visualizing the PCAs
+pdf(file='sub3_BASC_St_3_obj_082124.pdf',width=10,height=8)
+ElbowPlot(sub3_BASC_St_3_obj,ndims = 100)
+PCHeatmap(sub3_BASC_St_3_obj,cells=200,balanced=T,dims=1:9)
+PCHeatmap(sub3_BASC_St_3_obj,cells=200,balanced=T,dims=10:18)
+PCHeatmap(sub3_BASC_St_3_obj,cells=200,balanced=T,dims=19:27)
+PCHeatmap(sub3_BASC_St_3_obj,cells=200,balanced=T,dims=28:36)
+PCHeatmap(sub3_BASC_St_3_obj,cells=200,balanced=T,dims=37:45)
+PCHeatmap(sub3_BASC_St_3_obj,cells=200,balanced=T,dims=46:54)
+PCHeatmap(sub3_BASC_St_3_obj,cells=200,balanced=T,dims=55:63)
+PCHeatmap(sub3_BASC_St_3_obj,cells=200,balanced=T,dims=64:72)
+PCHeatmap(sub3_BASC_St_3_obj,cells=200,balanced=T,dims=73:81)
+PCHeatmap(sub3_BASC_St_3_obj,cells=200,balanced=T,dims=82:90)
+PCHeatmap(sub3_BASC_St_3_obj,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+New embedding, cutting off at 22 PCs based on PCA output above
+```{r}
+sub3_BASC_St_3_obj = RunUMAP(sub3_BASC_St_3_obj, dims = 1:22)
+DimPlot(sub3_BASC_St_3_obj, label = TRUE)
+# Creating nearest neighbor graph, not clustering.
+sub3_BASC_St_3_obj = FindNeighbors(sub3_BASC_St_3_obj, dims = 1:22)
+# Defining clusters - very high res. There is purpose in doing this.
+sub3_BASC_St_3_obj = FindClusters(sub3_BASC_St_3_obj, res = 8.275)
+DimPlot(sub3_BASC_St_3_obj, label = TRUE)
+```
+
+Checking data quality for next set of cluster removal
+```{r}
+FeaturePlot(sub3_BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+VlnPlot(sub3_BASC_St_3_obj,  features = "percent.mt")
+customFeaturePlot(sub3_BASC_St_3_obj)
+FeaturePlot(sub3_BASC_St_3_obj, features = c("Epcam", "Ptprc"), label = TRUE, ncol = 1)
+FeaturePlot(sub3_BASC_St_3_obj, features = c("Epcam", "Cdh5", "Col1a1", "Ptprc"), label = TRUE)
+```
+
+Removing the following clusters after close analysis: 29, 38
+```{r}
+sub4_BASC_St_3_obj = subset(sub3_BASC_St_3_obj, idents = c("29","38"), invert=TRUE)
+FeaturePlot(sub4_BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+customFeaturePlot(sub4_BASC_St_3_obj)
+# Good enough, I hope
+```
+Rescale our new subset object
+```{r}
+# Rescale the data
+sub4_BASC_St_3_obj = ScaleData(sub4_BASC_St_3_obj)
+# Normalizing the object
+sub4_BASC_St_3_obj = NormalizeData(sub4_BASC_St_3_obj)
+# Find variable features
+sub4_BASC_St_3_obj = FindVariableFeatures(sub4_BASC_St_3_obj)
+```
+
+PCA Round 6
+```{r}
+sub4_BASC_St_3_obj = RunPCA(sub4_BASC_St_3_obj, npcs = 100)
+# Visualizing the PCAs
+pdf(file='sub4_BASC_St_3_obj_08212024.pdf',width=10,height=8)
+ElbowPlot(sub4_BASC_St_3_obj,ndims = 100)
+PCHeatmap(sub4_BASC_St_3_obj,cells=200,balanced=T,dims=1:9)
+PCHeatmap(sub4_BASC_St_3_obj,cells=200,balanced=T,dims=10:18)
+PCHeatmap(sub4_BASC_St_3_obj,cells=200,balanced=T,dims=19:27)
+PCHeatmap(sub4_BASC_St_3_obj,cells=200,balanced=T,dims=28:36)
+PCHeatmap(sub4_BASC_St_3_obj,cells=200,balanced=T,dims=37:45)
+PCHeatmap(sub4_BASC_St_3_obj,cells=200,balanced=T,dims=46:54)
+PCHeatmap(sub4_BASC_St_3_obj,cells=200,balanced=T,dims=55:63)
+PCHeatmap(sub4_BASC_St_3_obj,cells=200,balanced=T,dims=64:72)
+PCHeatmap(sub4_BASC_St_3_obj,cells=200,balanced=T,dims=73:81)
+PCHeatmap(sub4_BASC_St_3_obj,cells=200,balanced=T,dims=82:90)
+PCHeatmap(sub4_BASC_St_3_obj,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+Re-embedding with a cutoff of 22 PCs
+```{r}
+# UMAP - cutting off at 15 PCs
+sub4_BASC_St_3_obj = RunUMAP(sub4_BASC_St_3_obj, dims = 1:22)
+DimPlot(sub4_BASC_St_3_obj, label = TRUE)
+# Creating nearest neighbor graph, not clustering.
+sub4_BASC_St_3_obj = FindNeighbors(sub4_BASC_St_3_obj, dims = 1:22)
+# Defining clusters - very high res. There is purpose in doing this.
+sub4_BASC_St_3_obj = FindClusters(sub4_BASC_St_3_obj, res = 8.2)
+DimPlot(sub4_BASC_St_3_obj, label = TRUE)
+```
+
+Data quality check for next iteration of cluster removal
+```{r}
+FeaturePlot(sub4_BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+customFeaturePlot(sub4_BASC_St_3_obj)
+VlnPlot(sub4_BASC_St_3_obj,  features = "percent.mt")
+FeaturePlot(sub4_BASC_St_3_obj,features = c("nFeature_RNA", "percent.mt"), ncol = 2, label = TRUE)
+FeaturePlot(sub4_BASC_St_3_obj, features = c("Epcam", "Ptprc"), label = TRUE, ncol = 1)
+FeaturePlot(sub4_BASC_St_3_obj, features = c("Epcam", "Ptprc","Col1a1","Cdh5"), label = TRUE, ncol = 2)
+```
+
+Okay, one last tweak: remove clusters 49 and 39 it is mt to the max
+```{r}
+sub5_BASC_St_3_obj = subset(sub4_BASC_St_3_obj, idents = c("49","39"), invert=TRUE)
+FeaturePlot(sub5_BASC_St_3_obj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, label = TRUE)
+customFeaturePlot(sub5_BASC_St_3_obj)
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Epcam", "Ptprc","Col1a1","Cdh5"), label = TRUE, ncol = 2)
+```
+
+Rescaling and re-normalizing our new subset object
+```{r}
+# Rescale the data
+sub5_BASC_St_3_obj = ScaleData(sub5_BASC_St_3_obj)
+# Normalizing the object
+sub5_BASC_St_3_obj = NormalizeData(sub5_BASC_St_3_obj)
+# Find variable features
+sub5_BASC_St_3_obj = FindVariableFeatures(sub5_BASC_St_3_obj)
+```
+
+
+PCA Round 7
+```{r}
+# PCA again
+sub5_BASC_St_3_obj = RunPCA(sub5_BASC_St_3_obj, npcs = 100)
+# Visualizing the PCAs
+pdf(file='sub5_BASC_St_3_obj_082124.pdf',width=10,height=8)
+ElbowPlot(sub5_BASC_St_3_obj,ndims = 100)
+PCHeatmap(sub5_BASC_St_3_obj,cells=200,balanced=T,dims=1:9)
+PCHeatmap(sub5_BASC_St_3_obj,cells=200,balanced=T,dims=10:18)
+PCHeatmap(sub5_BASC_St_3_obj,cells=200,balanced=T,dims=19:27)
+PCHeatmap(sub5_BASC_St_3_obj,cells=200,balanced=T,dims=28:36)
+PCHeatmap(sub5_BASC_St_3_obj,cells=200,balanced=T,dims=37:45)
+PCHeatmap(sub5_BASC_St_3_obj,cells=200,balanced=T,dims=46:54)
+PCHeatmap(sub5_BASC_St_3_obj,cells=200,balanced=T,dims=55:63)
+PCHeatmap(sub5_BASC_St_3_obj,cells=200,balanced=T,dims=64:72)
+PCHeatmap(sub5_BASC_St_3_obj,cells=200,balanced=T,dims=73:81)
+PCHeatmap(sub5_BASC_St_3_obj,cells=200,balanced=T,dims=82:90)
+PCHeatmap(sub5_BASC_St_3_obj,cells=200,balanced=T,dims=91:99)
+dev.off()
+```
+
+Re-embedding w/cutoff at 20 PCs
+```{r}
+# UMAP - cutting off at 15 PCs
+sub5_BASC_St_3_obj = RunUMAP(sub5_BASC_St_3_obj, dims = 1:21)
+DimPlot(sub5_BASC_St_3_obj, label = TRUE)
+# Creating nearest neighbor graph, not clustering.
+sub5_BASC_St_3_obj = FindNeighbors(sub5_BASC_St_3_obj, dims = 1:21)
+# Defining clusters - very high res. There is purpose in doing this.
+sub5_BASC_St_3_obj = FindClusters(sub5_BASC_St_3_obj, res = 0.35)
+DimPlot(sub5_BASC_St_3_obj, label = TRUE)
+```
+
+I played around with a few resolutions, but chose a more fine clustering so that we can have the BASC/Tuft cells as their own cluster. Also cool to see how this cluster sort of turns off of the ATII/ATI clusters such that it gave rise to both (perhaps?)
+
+Classing by canonical markers
+```{r}
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Epcam", "Cdh5", "Col1a1", "Ptprc"), label = TRUE)
+# Stash clusters
+sub5_BASC_St_3_obj$stash = Idents(sub5_BASC_St_3_obj)
+```
+
+Yes, cluster 11 is really weird, but if we look at the information, it is very high in info (counts/features). Therefore, I'd like to refrain from removing it if possible. For reference, see below:
+
+```{r}
+customFeaturePlot(sub5_BASC_St_3_obj)
+```
+Labeling the clusters based on canonical marker classification above. Cluster 11 is more ptprc positive so marking it as immune (for now).
+```{r}
+cell.epi = WhichCells(sub5_BASC_St_3_obj, idents = c(2,4,6,7,8,13))
+cell.immu = WhichCells(sub5_BASC_St_3_obj, idents = c(0,1,3,10,11,14,16,18))
+cell.mes = WhichCells(sub5_BASC_St_3_obj, idents = c(12,15))
+cell.endo = WhichCells(sub5_BASC_St_3_obj, idents = c(5,9,17))
+
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cell.epi, value = 'Epithelium')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cell.immu, value = 'Immune')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cell.mes, value = 'Mesenchyme')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cell.endo, value = 'Endothelium')
+```
+
+
+New feature plot with cell class labels
+```{r}
+# New feature plot with cell classes
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Epcam", "Cdh5", "Col1a1", "Ptprc"), label = TRUE)
+```
+
+Stash the cell class labels and ensure everything is labeled
+```{r}
+# Stash the cell class
+sub5_BASC_St_3_obj$CellClass = Idents(sub5_BASC_St_3_obj)
+table(sub5_BASC_St_3_obj$CellClass)
+# confirming that everything is labeled
+sum(is.na(sub5_BASC_St_3_obj$CellClass))
+```
+
+
+Restore the cluster labels
+```{r}
+# Restores the cell identities that were previously stashed or stored elsewhere.
+Idents(sub5_BASC_St_3_obj) = sub5_BASC_St_3_obj$stash
+table(Idents(sub5_BASC_St_3_obj))
+```
+
+Create a marker list for differential gene expression analysis
+```{r}
+# Running differential expression; look at FindAllMarkers
+mark_st3 = FindAllMarkers(sub5_BASC_St_3_obj, min.pct = 0.1,logfc.threshold = 0.1)
+mark_st3$ratio = mark_st3$pct.1/mark_st3$pct.2
+mark_st3$power = mark_st3$ratio*mark_st3$avg_log2FC
+write.csv(mark_st3, file = "BASC_st_3_markers_082224.csv", row.names = TRUE)
+# Top markers
+top10_st3 = mark_st3 %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+DoHeatmap(sub5_BASC_St_3_obj, features = top10_st3$gene) 
+write.csv(top10_st3, file = "top_cluster_markers_st_rep3_082224.csv", row.names = TRUE)
+```
+Saving object as we go - before prelim annotations
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3")
+save(sub5_BASC_St_3_obj, file = 'sub5_BASC_St_3_obj_no.annos_082124.Robj')
+```
+
+Making sure our data is organized; we want all the plots we generate for prelim annotations to be saved to one sub-folder
+```{r}
+# Let's set the wd to save all the plots we are going to make in one folder.
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+library(RColorBrewer)
+```
+
+Cluster 0: Immune - Alveolar Macrophage-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Arg1","Krt79","Cela1","Prodh2","Slc39a2","Serpinb10"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Arg1","Krt79","Cela1","Prodh2","Slc39a2","Serpinb10"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c0 <- c("Arg1" = "#7E2E84", "Krt79" = "#C59FC9", "Cela1" = "#FF006F","Prodh2" = "#D14081", "Slc39a2" = "#FF3E41", "Serpinb10" = "#A50F2A")
+# Create a stacked (vertical) violin plot for the specified features
+stacked_violin_plot_c0 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Arg1","Krt79","Cela1","Prodh2","Slc39a2","Serpinb10"), stack = TRUE, flip = TRUE) +
+  scale_fill_manual(values = custom_colors_c0) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c0)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c0.png", plot = stacked_violin_plot_c0, width = 10, height = 6, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Arg1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Krt79") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Cela1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Prodh2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Slc39a2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Serpinb10") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c0 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c0)
+ggsave("combined_plot_c0.png", plot = combined_plot_c0, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 1: Immune - B Cell-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Cd79b","AABR07034739.1","Lax1","Fcmr","Ebf1","Pax5"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Cd79b","AABR07034739.1","Lax1","Fcmr","Ebf1","Pax5"))
+
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c1 <- c("Cd79b" = "#13293D", "AABR07034739.1" = "#05668D", "Lax1" = "#005BAA","Fcmr" = "#578AFF", "Ebf1" = "#1B98E0", "Pax5" = "#A6D1FF")
+# Create a stacked (vertical) violin plot for the specified features
+stacked_violin_plot_c1 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Cd79b","AABR07034739.1","Lax1","Fcmr","Ebf1","Pax5"), stack = TRUE, flip = TRUE) +
+  scale_fill_manual(values = custom_colors_c1) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c1)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c1.png", plot = stacked_violin_plot_c1, width = 10, height = 6, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Cd79b") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "AABR07034739.1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Lax1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Fcmr") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Ebf1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Pax5") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c1 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c1)
+ggsave("combined_plot_c1.png", plot = combined_plot_c1, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 2: Epithelium - Secretory-Like Epi
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Pon1","Scgb1a1","Chia","Bpifa5","Scgb3a2","Gstt3"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Pon1","Scgb1a1","Chia","Bpifa5","Scgb3a2","Gstt3"))
+
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c2 <- c("Pon1" = "#DE8541", "Scgb1a1" = "#F08700", "Chia" = "#F49F0A","Bpifa5" = "#EFCA08", "Scgb3a2" = "#EAD94C", "Gstt3" = "#CDC6AE")
+# Create a stacked (vertical) violin plot for the specified features
+stacked_violin_plot_c2 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Pon1","Scgb1a1","Chia","Bpifa5","Scgb3a2","Gstt3"), stack = TRUE, flip = TRUE) +
+  scale_fill_manual(values = custom_colors_c2) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c2)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c2.png", plot = stacked_violin_plot_c2, width = 10, height = 6, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Pon1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Scgb1a1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Chia") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Bpifa5") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Scgb3a2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Muc5b") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c2 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c2)
+ggsave("combined_plot_c2.png", plot = combined_plot_c2, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 3: Immune - Monocyte-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Eno3","S1pr5","Mal","Spn","Tgfbi","Pou2f2"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Eno3","S1pr5","Mal","Spn","Tgfbi","Pou2f2"))
+
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c3 <- c("Eno3" = "#D9D0DE", "S1pr5" = "#BC8DA0", "Mal" = "#A04668","Spn" = "#65283A", "Tgfbi" = "#452556", "Pou2f2" = "#0C1713")
+# Create a stacked (vertical) violin plot for the specified features
+stacked_violin_plot_c3 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Eno3","S1pr5","Mal","Spn","Tgfbi","Pou2f2"), stack = TRUE, flip = TRUE) +
+  scale_fill_manual(values = custom_colors_c3) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c3)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c3.png", plot = stacked_violin_plot_c3, width = 10, height = 6, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Eno3") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "S1pr5") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Mal") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Spn") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Tgfbi") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Pou2f2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c3 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c3)
+ggsave("combined_plot_c3.png", plot = combined_plot_c3, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 4: Epithelium - ATII-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Kcne2","Sftpc","Lamp3","Defb4","Pla2g1b","Npw"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Kcne2","Sftpc","Lamp3","Defb4","Pla2g1b","Npw"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c4 <- c("Kcne2" = "#B8B8F3", "Sftpc" = "#C59FC9", "Lamp3" = "#F397D6","Defb4" = "#F42272", "Pla2g1b" = "#FF879B", "Npw" = "#A50F2A")
+# Create a stacked (vertical) violin plot for the specified features
+stacked_violin_plot_c4 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Kcne2","Sftpc","Lamp3","Defb4","Pla2g1b","Npw"), stack = TRUE, flip = TRUE) +
+  scale_fill_manual(values = custom_colors_c4) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c4)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c4.png", plot = stacked_violin_plot_c4, width = 10, height = 6, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Kcne2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Sftpc") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Lamp3") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Defb4") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Pla2g1b") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Npw") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c4 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c4)
+ggsave("combined_plot_c4.png", plot = combined_plot_c4, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 5: Endothelium - Venous EC-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Slc6a2","Vegfc","Avpr1a","Cygb","Amigo2","Ripply3"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Slc6a2","Vegfc","Avpr1a","Cygb","Amigo2","Ripply3"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c5 <- c("Slc6a2" = "#0099ff", "Vegfc" = "#9d98f6", "Avpr1a" = "#d59de5","Cygb" = "#f489d3","Amigo2" = "#DB93B0", "Ripply3" = "#ffbcca","Wnt9b" ="#F7BFB4") 
+# Create a stacked (vertical) violin plot for the specified features 
+# Adding in Wnt9b because it's new and novel and interesting
+stacked_violin_plot_c5 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Slc6a2","Vegfc","Avpr1a","Cygb","Amigo2","Ripply3","Wnt9b"), stack = TRUE, flip = TRUE) +
+  scale_fill_manual(values = custom_colors_c5) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c5)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c5.png", plot = stacked_violin_plot_c5, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Slc6a2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Vegfc") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Avpr1a") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Cygb") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Amigo2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Ripply3") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c5 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c5)
+ggsave("combined_plot_c5.png", plot = combined_plot_c5, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 6: Epithelium - So these cells are definitely cilliated, but clusters 6 and 7 are cilliated so let's try and see if there is anything that differentiates the two first.
+```{r}
+c6.c7.epi.DEGs <- FindMarkers(sub5_BASC_St_3_obj, ident.1 = 6, ident.2 = 7, min.pct = 0.1)
+c6.c7.epi.DEGs$ratio = c6.c7.epi.DEGs$pct.1/c6.c7.epi.DEGs$pct.2
+c6.c7.epi.DEGs$power = c6.c7.epi.DEGs$ratio*c6.c7.epi.DEGs$avg_log2FC
+write.csv(c6.c7.epi.DEGs, file = "c6.c7.epi.DEGs_082224.csv", row.names = TRUE)
+View(c6.c7.epi.DEGs)
+VlnPlot(sub5_BASC_St_3_obj, features = c('Scgb3a2',"Scgb1a1",'Sftpc','Bpifb1','Napsa','Mgp'))
+# So maybe cluster 6 RASC-like and cluster 7 is the true ciliated cells?
+```
+
+Cluster 6: Epithelium - RASC-like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Scgb3a2","Scgb1a1","Sftpc","Ccdc153", "Riiad1","Aqp5","Bpifb1","Abca3"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Scgb3a2","Scgb1a1","Sftpc","Ccdc153","Riiad1","Aqp5","Bpifb1","Abca3"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c6 <- c("Scgb3a2" = "#C3F73A", "Scgb1a1" = "#95E06C", "Sftpc" = "#68B684",'Ccdc153' = "#99b300","Riiad1" = "#00b0a6", "Aqp5" = "#094D92", "Bpifb1" = "#747C92", "Abca3" = "#2C2C34")
+# Create a stacked (vertical) violin plot for the specified features 
+# Adding in Wnt9b because it's new and novel and interesting
+stacked_violin_plot_c6 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Scgb3a2","Scgb1a1","Sftpc","Ccdc153", "Riiad1", "Aqp5","Bpifb1","Abca3"), stack = TRUE, flip = TRUE) +
+  scale_fill_manual(values = custom_colors_c6) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c6)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c6.png", plot = stacked_violin_plot_c6, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Scgb3a2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Scgb1a1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Sftpc") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Ccdc153") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Bpifb1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Aqp5") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c6 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c6)
+ggsave("combined_plot_c6.png", plot = combined_plot_c6, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 7: Epithelium - Ciliated-Like Epithelium
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Ccdc153","Riiad1","Sntn", "Efcab10","Cfap126","Spaca9"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Ccdc153","Riiad1","Sntn", "Efcab10","Cfap126","Spaca9"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c7 <- c("Ccdc153" = "#3B3561", "Riiad1" = "#EAD94C", "Sntn" = "#51A3A3",'Efcab10' = "#659B5E","Cfap126" = "#FF87AB", "Spaca9" = "#005BAA")
+# Create a stacked (vertical) violin plot for the specified features 
+# Adding in Wnt9b because it's new and novel and interesting
+stacked_violin_plot_c7 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Ccdc153","Riiad1","Sntn", "Efcab10","Cfap126","Spaca9"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c7) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c7)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c7.png", plot = stacked_violin_plot_c7, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Ccdc153") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Riiad1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Sntn") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Efcab10") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Cfap126") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Spaca9") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c7 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c7)
+ggsave("combined_plot_c7.png", plot = combined_plot_c7, width = 20, height = 8, dpi = 300)
+```
+Cluster 8 - Epithelium - ATI-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Ager","Pdpn","Akap5", "Rtkn2","Anxa8","Aqp5","Clic5","Tacstd2"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Ager","Pdpn","Akap5", "Rtkn2","Anxa8","Aqp5","Clic5","Tacstd2"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c8 <- c("Ager" = "#13293D", "Pdpn" = "#19516C", "Akap5" = "#247BA0","Rtkn2" = "#005BAA","Anxa8" = "#1B98E0","Aqp5" = "#A6D1FF", "Clic5" = "#578AFF", "Tacstd2" = "#62E3F1")
+# Create a stacked (vertical) violin plot for the specified features 
+# Adding in Wnt9b because it's new and novel and interesting
+stacked_violin_plot_c8 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Ager","Pdpn","Akap5", "Rtkn2","Anxa8","Aqp5","Clic5","Tacstd2"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c8) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c8)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c8.png", plot = stacked_violin_plot_c8, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Ager") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Akap5") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Rtkn2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Aqp5") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Tacstd2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Pdpn") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c8 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c8)
+ggsave("combined_plot_c8.png", plot = combined_plot_c8, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 9 - Endothelium - Arterial EC-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Dkk2","Dll4","Gja5", "Cyp26b1","Sox17","Kcne3"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Dkk2","Dll4","Gja5", "Cyp26b1","Sox17","Kcne3"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c9 <- c("Dkk2" = "#5B4B49", "Dll4" = "#DB93B0", "Gja5" = "#F7BFB4","Cyp26b1" = "#F5D491","Sox17" = "#A5D686","Kcne3" = "#7DCCD4")
+# Create a stacked (vertical) violin plot for the specified features 
+# Adding in Wnt9b because it's new and novel and interesting
+stacked_violin_plot_c9 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Dkk2","Dll4","Gja5", "Cyp26b1","Sox17","Kcne3"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c9) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c9)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c9.png", plot = stacked_violin_plot_c9, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Dkk2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Dll4") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Gja5") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Cyp26b1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Sox17") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Kcne3") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c9 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c9)
+ggsave("combined_plot_c9.png", plot = combined_plot_c9, width = 20, height = 8, dpi = 300)
+```
+Cluster 10 - Immune - Interstitial Macrophage-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Cd163","Pf4","C1qc","C1qb","C1qa","Folr2"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Cd163","Pf4","C1qc","C1qb","C1qa","Folr2"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c10 <- c("Cd163" = "#7E2E84", "Pf4" = "#D14081", "C1qc" = "#EF798A","C1qb" = "#1E555C", "C1qa" = "#FF5400", "Folr2" = "#90E0F3")
+# Create a stacked (vertical) violin plot for the specified features 
+stacked_violin_plot_c10 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Cd163","Pf4","C1qc","C1qb","C1qa","Folr2"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c10) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c10)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c10.png", plot = stacked_violin_plot_c10, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Cd163") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Pf4") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "C1qc") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "C1qb") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "C1qa") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Folr2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c10 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c10)
+ggsave("combined_plot_c10.png", plot = combined_plot_c10, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 11 - Immune - Cell Cycle
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Mrc1","Ptprc","Top2a","Sftpc","Epcam","Cdh5","Mki67","Ube2c"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Mrc1","Ptprc","Top2a","Sftpc","Epcam","Cdh5","Mki67","Ube2c"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c11 <- c("Mrc1" = "#AF3800", "Ptprc" = "#FE621D", "Top2a" = "#FD5200","Cela1" = "#00CFC1", "Sgo2" = "#00FFE7", "Arg1" = "#6BBACA","Mki67" = "#9EEFE5", "Ube2c" = "#7D84B2")
+# Create a stacked (vertical) violin plot for the specified features 
+stacked_violin_plot_c11 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Mrc1","Ptprc","Top2a","Cela1","Sgo2","Arg1","Mki67","Ube2c"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c11) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c11)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c11.png", plot = stacked_violin_plot_c11, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Mrc1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Top2a") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Ube2c") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Mki67") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Ptprc") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Cela1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c11 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c11)
+ggsave("combined_plot_c11.png", plot = combined_plot_c11, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 12 - Mesenchyme - Mesothelium-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Msln","Rspo1","Upk3b","Pdlim4","Ahsp","Prph","Stmn2","Wt1","Ndn","Pappa2"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Msln","Rspo1","Upk3b","Pdlim4","Ahsp","Prph","Stmn2","Wt1","Ndn","Pappa2"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c12 <- c("Msln" = "#AF3800", "Rspo1" = "#FE621D", "Upk3b" = "#FD5200","Pdlim4" = "#00CFC1", "Ahsp" = "#00FFE7", "Prph" = "#6BBACA","Stmn2" = "#9EEFE5", "Wt1" = "#7D84B2", "Ndn" = "#90BE6D","Pappa2" = "#C3E8BD")
+# Create a stacked (vertical) violin plot for the specified features 
+stacked_violin_plot_c12 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Msln","Rspo1","Upk3b","Pdlim4","Ahsp","Prph","Stmn2","Wt1","Ndn","Pappa2"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c12) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c12)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c12.png", plot = stacked_violin_plot_c12, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Rspo1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Upk3b") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Wt1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Ndn") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Pappa2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Ahsp") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c12 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c12)
+ggsave("combined_plot_c12.png", plot = combined_plot_c12, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 13 - Epithelium - Tuft/BASC-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Sox9","Pou2f3","Dclk1","Avil","Espn","Gng13","Rgs13","Gnat3","Nrgn","Sphkap"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Sox9","Pou2f3","Dclk1","Avil","Espn","Gng13","Rgs13","Gnat3","Nrgn","Sphkap"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c13 <- c("Sox9" = "#ff029e", "Pou2f3" = "#bf63ff", "Dclk1" = "#009cff","Avil" = "#00a8cd","Espn" = "#00b0a6","Gng13" = "#00be4f", "Rgs13" = "#99b300", "Gnat3" = "#f99305", "Nrgn" = "#184DE9","Sphkap" = "#FFFB46")
+# Create a stacked (vertical) violin plot for the specified features 
+stacked_violin_plot_c13 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Sox9","Pou2f3","Dclk1","Avil","Espn","Gng13","Rgs13","Gnat3","Nrgn","Sphkap"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c13) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c13)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c13.png", plot = stacked_violin_plot_c13, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Pou2f3") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Sox9") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Avil") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Espn") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Rgs13") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Sphkap") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c13 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c13)
+ggsave("combined_plot_c13.png", plot = combined_plot_c13, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 14 - Immune - pDC-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Kmo", "Tex2","Runx2","Gpr171","Gpm6b","Irf8"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Flt3","Cd7","Kmo","Siglech","Gpm6b"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c14 <- c("Flt3" = "#F7B267", "Cd7" = "#F79D65", "Kmo" = "#F4845F","Siglech" = "#F27059","Gpm6b" = "#F25C54")
+# Create a stacked (vertical) violin plot for the specified features 
+stacked_violin_plot_c14 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Flt3","Cd7","Kmo","Siglech","Gpm6b"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c14) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c14)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c14.png", plot = stacked_violin_plot_c14, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Flt3") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Cd7") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Kmo") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Siglech") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Gpm6b") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c14 <- (p1 + p2 + p3 + p4 + p5) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c14)
+ggsave("combined_plot_c14.png", plot = combined_plot_c14, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 15 - Mesenchyme - Myoepithelial (SMCs/Pericytes/MyoFBs)-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Spink8", "Acta2","Pdgfrb","Actc1","Tagln","Lmod1"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Spink8", "Acta2","Pdgfrb","Actc1","Tagln","Lmod1"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c15 <- c("Spink8" = "#361134", "Acta2" = "#B0228C", "Pdgfrb" = "#EA3788","Actc1" = "#E56B70","Tagln" = "#F391A0", "Lmod1" = "#F6CACA")
+# Create a stacked (vertical) violin plot for the specified features 
+stacked_violin_plot_c15 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Spink8", "Acta2","Pdgfrb","Actc1","Tagln","Lmod1"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c15) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c15)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c15.png", plot = stacked_violin_plot_c15, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Spink8") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Acta2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Pdgfrb") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Actc1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Tagln") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Lmod1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c15 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c15)
+ggsave("combined_plot_c15.png", plot = combined_plot_c15, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 16 - Immune - Neutrophil-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Pglyrp1","S100a8","S100a9","Ifit1bl","Stfa2","Pla2g7"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Pglyrp1","S100a8","S100a9","Ifit1bl","Stfa2","Pla2g7"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c16 <- c("Pglyrp1" = "#B0A1BA", "S100a8" = "#A5B5BF", "S100a9" = "#ABC8C7","Ifit1bl" = "#B8E2C8","Stfa2" = "#BFF0D4", "Pla2g7" = "#EAC4D5")
+# Create a stacked (vertical) violin plot for the specified features 
+stacked_violin_plot_c16 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Pglyrp1","S100a8","S100a9","Ifit1bl","Stfa2","Pla2g7"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c16) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c16)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c16.png", plot = stacked_violin_plot_c16, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Pglyrp1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "S100a8") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "S100a9") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Ifit1bl") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Stfa2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Pla2g7") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c16 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c16)
+ggsave("combined_plot_c16.png", plot = combined_plot_c16, width = 20, height = 8, dpi = 300)
+```
+
+Cluster 17 - Endothelium - EC Capillary-Like
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Aplnr","Scn7a","Wif1","Gpihbp1","Apln","Acer2"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Aplnr","Scn7a","Wif1","Gpihbp1","Apln","Acer2"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c17 <- c("Aplnr" = "#92374D", "Scn7a" = "#8C5383", "Wif1" = "#4A5899","Gpihbp1" = "#559CAD","Apln" = "#7EB08A", "Acer2" = "#C1B2AB")
+# Create a stacked (vertical) violin plot for the specified features 
+stacked_violin_plot_c17 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Aplnr","Scn7a","Wif1","Gpihbp1","Apln","Acer2"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c17) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c17)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c17.png", plot = stacked_violin_plot_c17, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Aplnr") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Scn7a") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Wif1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Gpihbp1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Apln") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Acer2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c17 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c17)
+ggsave("combined_plot_c17.png", plot = combined_plot_c17, width = 20, height = 8, dpi = 300)
+```
+
+Okay, so cluster 0 and cluster 18 seem very similar. Let's try to figure out what makes them different?
+
+```{r}
+c18.c0.epi.DEGs <- FindMarkers(sub5_BASC_St_3_obj, ident.1 = 18, ident.2 = 0, min.pct = 0.1)
+c18.c0.epi.DEGs$ratio = c18.c0.epi.DEGs$pct.1/c18.c0.epi.DEGs$pct.2
+c18.c0.epi.DEGs$power = c18.c0.epi.DEGs$ratio*c18.c0.epi.DEGs$avg_log2FC
+write.csv(c18.c0.epi.DEGs, file = "c18.c0.epi.DEGs_082324.csv", row.names = TRUE)
+View(c18.c0.epi.DEGs)
+VlnPlot(sub5_BASC_St_3_obj, 'Pax5')
+VlnPlot(sub5_BASC_St_3_obj, 'Spi1')
+VlnPlot(sub5_BASC_St_3_obj, 'Itgb2')
+```
+Based on the above, perhaps, these are transitional B Cell ---> Alv. Mac which we know can happen because B cells are more plastic than initially thought to be. Some groups have shown that B cell progenitors, as well as mature B cells can be induced to adapt properties of macrophages. It seems like we may have captured this small subset of cells undergoing this exact transitional process. See more here: https://www.rndsystems.com/resources/articles/can-committed-b-cell-become-macrophage and https://www.cell.com/immunity/pdf/S1074-7613(03)00242-5.pdf. These cells upregulate Sfpi1 which in the rat is Spi1 and Mac1 which is Itgb2 in rat. So expressing both Alveolar Macrophage Markers and B cell markers
+
+
+Cluster 18 - B-Alv Macrophage 
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3/Cluster Plots")
+# Our conventional/typical plots
+FeaturePlot(sub5_BASC_St_3_obj, features = c("Pax5","Spi1","Cd79b","Lax1","Arg1","Prodh2"), label = TRUE)
+VlnPlot(sub5_BASC_St_3_obj, features = c("Pax5","Spi1","Cd79b","Lax1","Arg1","Prodh2"))
+# Now for some more custom, aesthetically pleasing plots
+# Define a custom color palette
+custom_colors_c18 <- c("Pax5" = "#03256C", "Spi1" = "#2541B2", "Cd79b" = "#1768AC","Lax1" = "#06BEE1","Arg1" = "#7FE1E3", "Prodh2" = "#CDE6E2")
+# Create a stacked (vertical) violin plot for the specified features 
+stacked_violin_plot_c18 <- VlnPlot(sub5_BASC_St_3_obj, features = c("Pax5","Spi1","Cd79b","Lax1","Arg1","Prodh2"), stack = TRUE, flip = TRUE) + scale_fill_manual(values = custom_colors_c18) +
+  theme(legend.position = "none")  # Remove the legend
+# Display the plot
+print(stacked_violin_plot_c18)
+# Save the stacked violin plot
+ggsave("stacked_violin_plot_c18.png", plot = stacked_violin_plot_c18, width = 10, height = 22, dpi = 300)
+library(ggplot2)
+library(patchwork)
+library(RColorBrewer)
+# Define your plots with the same gradient scale
+p1 <- FeaturePlot(sub5_BASC_St_3_obj, "Pax5") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p2 <- FeaturePlot(sub5_BASC_St_3_obj, "Spi1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p3 <- FeaturePlot(sub5_BASC_St_3_obj, "Cd79b") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p4 <- FeaturePlot(sub5_BASC_St_3_obj, "Lax1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p5 <- FeaturePlot(sub5_BASC_St_3_obj, "Arg1") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+p6 <- FeaturePlot(sub5_BASC_St_3_obj, "Prodh2") + 
+  scale_colour_gradientn(colours = rev(brewer.pal(n = 5, name = "Spectral")))
+# Combine plots horizontally and add a shared legend
+combined_plot_c18 <- (p1 + p2 + p3 + p4 + p5 + p6) + plot_layout(ncol = 3)
+# Display the combined plot
+print(combined_plot_c18)
+ggsave("combined_plot_c18.png", plot = combined_plot_c18, width = 20, height = 8, dpi = 300)
+```
+
+Just temporarily loading in native atlas for random sanity checks
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/Native Lung Atlas")
+# Load object
+load("lung.combined.clean.classed.annotated.final.2022-07-24.Robj")
+# Check current idents data
+table(Idents(lung.combined))
+# Set idents to cellclass_final
+Idents(lung.combined) = "CellType_Final"
+# Define the genes of interest
+cap <- c("Mybpc2","AC142181.2","Pde6a","Art3","Csprs","Sun5","Nudt15","Cela1","Tac1")
+# Create expression dot plot
+plot1 <- DotPlot(lung.combined, features = cap, group.by = "CellType_Final", assay = "RNA") +
+  ggtitle("EC Capillary Native Reference (lung.combined)") +
+  scale_color_gradient(low = "#DDF0FF", high = "#0077D3") +  # More distinguishable color gradient
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 12))
+print(plot1)
+```
+
+
+Now that we have gone through our analysis of all DEGs, we can use our prelim annotations and add them as meta-data slots.
+
+# Adding Annotations and Saving as Meta-Data Slot
+```{r}
+# First, look at existing meta-data for object
+View(sub5_BASC_St_3_obj[[]])
+# Now adding annotations
+cluster0.alvmac.like = WhichCells(sub5_BASC_St_3_obj, idents = c(0))
+cluster1.bcell.like = WhichCells(sub5_BASC_St_3_obj, idents = c(1))
+cluster2.sec.like = WhichCells(sub5_BASC_St_3_obj, idents = c(2))
+cluster3.mono.like = WhichCells(sub5_BASC_St_3_obj, idents = c(3))
+cluster4.ATII.like = WhichCells(sub5_BASC_St_3_obj, idents = c(4))
+cluster5.venous.like = WhichCells(sub5_BASC_St_3_obj, idents = c(5))
+cluster6.RASC.like = WhichCells(sub5_BASC_St_3_obj, idents = c(6))
+cluster7.cili.like = WhichCells(sub5_BASC_St_3_obj, idents = c(7))
+cluster8.ATI.like = WhichCells(sub5_BASC_St_3_obj, idents = c(8))
+cluster9.arterial.like = WhichCells(sub5_BASC_St_3_obj, idents = c(9))
+cluster10.inter.mac.like = WhichCells(sub5_BASC_St_3_obj, idents = c(10))
+cluster11.cellcycle.like = WhichCells(sub5_BASC_St_3_obj, idents = c(11))
+cluster12.meso.like = WhichCells(sub5_BASC_St_3_obj, idents = c(12))
+cluster13.tuft.basc.like = WhichCells(sub5_BASC_St_3_obj, idents = c(13))
+cluster14.pDC.like = WhichCells(sub5_BASC_St_3_obj, idents = c(14))
+cluster15.myoepi.like = WhichCells(sub5_BASC_St_3_obj, idents = c(15))
+cluster16.neutro.like = WhichCells(sub5_BASC_St_3_obj, idents = c(16))
+cluster17.capEC.like = WhichCells(sub5_BASC_St_3_obj, idents = c(17))
+cluster18.B.mac.trans.like = WhichCells(sub5_BASC_St_3_obj, idents = c(18))
+
+# Taking clusters and assigning labels for meta-data
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster0.alvmac.like, value = 'Alveolar Macrophage-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster1.bcell.like, value = 'B Cell-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster2.sec.like, value = 'Secretory-Like Epi')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster3.mono.like, value = 'Monocyte-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster4.ATII.like, value = 'ATII-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster5.venous.like, value = 'Venous-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster6.RASC.like, value = 'RASC-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster7.cili.like, value = 'Ciliated-Like Epi')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster8.ATI.like, value = 'ATI-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster9.arterial.like, value = 'Arterial-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster10.inter.mac.like, value = 'Interstitial Macrophage-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster11.cellcycle.like, value = 'Cycling Immune')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster12.meso.like, value = 'Mesothelium-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster13.tuft.basc.like, value = 'Tuft/BASC-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster14.pDC.like, value = 'pDC-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster15.myoepi.like, value = 'Myoepithelial-Like (Myofibroblasts/SMCs/Pericytes)')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster16.neutro.like, value = 'Neutrophil-Like')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster17.capEC.like, value = 'Capillary-Like (aCaps/gCaps)')
+sub5_BASC_St_3_obj = SetIdent(sub5_BASC_St_3_obj, cells = cluster18.B.mac.trans.like, value = 'B-Macrophage Transitional')
+
+# Save as meta-data slot
+sub5_BASC_St_3_obj$rough.annos1 = Idents(sub5_BASC_St_3_obj)
+table(sub5_BASC_St_3_obj$rough.annos1)
+```
+
+# Confirming that annotations have been stored as meta-data
+```{r}
+View(sub5_BASC_St_3_obj[[]])
+head(sub5_BASC_St_3_obj@meta.data$rough.annos1)
+```
+
+# Making new UMAP with annotations
+```{r}
+# Then making a new UMAP plot with the rough annotations
+# Define a vector of custom colors - we need 16
+custom = c("#DC143C","#4169E1" ,"#32CD32","#FFD700","#C71585","#40E0D0","#FF7F50", "#708090","#FF1493","#2E8B57","#DA70D6","#8B4513", "#4682B4", "#FF8C00","#F08080","#48D1CC","#9400D3","#FA8072","#778899")
+
+# Plot UMAP with custom dot size and color palette
+umap_plot_annos1 = DimPlot(sub5_BASC_St_3_obj, 
+                           reduction = "umap", 
+                           group.by = "rough.annos1", 
+                           pt.size = 0.5,  # Adjust the dot size
+                           cols = custom  # custom color palette
+)
+# Customize the appearance of the labels
+umap_plot_annos1 = umap_plot_annos1 + 
+  theme(legend.position = "right",  # Adjust legend position
+        axis.text = element_text(size = 14),  # Adjust axis text size
+        legend.text = element_text(size = 14))  # Adjust legend text size
+# Print the plot
+print(umap_plot_annos1)
+
+# Specify the dimensions (in inches) and resolution (in dpi)
+width_in_inches = 18
+height_in_inches = 10
+dpi = 300
+# Save the plot as a high-resolution image
+ggsave(filename = "umap_plot_annos1_dclk1.st_rep3_082324.png", 
+       plot = umap_plot_annos1, 
+       width = width_in_inches, 
+       height = height_in_inches, 
+       dpi = dpi, 
+       units = "in")
+# Save object with annotations
+save(sub5_BASC_St_3_obj, file = "dclk1_st.pop_rep3_rough.annos_082324.Robj")
+```
+
+# Cell Cycle Scoring & Prelim Analysis
+```{r}
+# Cell Cycle Scoring/Analysis
+# Saving with new cell cycle scoring analysis
+s.genes = cc.genes$s.genes
+g2m.genes = cc.genes$g2m.genes
+sub5_BASC_St_3_obj = CellCycleScoring(sub5_BASC_St_3_obj, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+table(sub5_BASC_St_3_obj@meta.data$Phase)
+```
+
+# Cell Cycle Scoring UMAP
+```{r}
+# Create plot
+custom2 = c("#F2F230","#91F291","#30F2F2")
+sub5_BASC_St_3_obj = CellCycleScoring(sub5_BASC_St_3_obj, 
+                                         s.features = s.genes, 
+                                         g2m.features = g2m.genes, 
+                                         set.ident = TRUE)
+cell_cycle_umap = DimPlot(sub5_BASC_St_3_obj, 
+                          reduction = "umap", 
+                          group.by = "Phase", 
+                          pt.size = 0.5,  # Adjust the dot size
+                          cols = custom2,  # custom color palette
+                          label = FALSE  # Show cluster labels
+)
+
+cell_cycle_umap = cell_cycle_umap + 
+  theme(legend.position = "right",  # Adjust legend position  # Adjust axis text size
+        legend.text = element_text(size = 14))  # Adjust legend text size
+# Print the plot
+print(cell_cycle_umap)
+
+# Specify the dimensions (in inches) and resolution (in dpi)
+width_in_inches = 18
+height_in_inches = 10
+dpi = 300
+# Save the plot as a high-resolution image
+ggsave(filename = "cellscoring.umap_dclk1.st_rep3_082324.png", 
+       plot = cell_cycle_umap, 
+       width = width_in_inches, 
+       height = height_in_inches, 
+       dpi = dpi, 
+       units = "in")
+# View as table
+View(table(sub5_BASC_St_3_obj$Phase))
+```
+
+Pie Chart showing global object breakdown by cell type (rough annotations)
+```{r}
+library(ggplot2)
+library(dplyr)
+# Get the cell type counts from the metadata
+cell_type_counts <- as.data.frame(table(sub5_BASC_St_3_obj@meta.data$rough.annos1))
+colnames(cell_type_counts) <- c("CellType", "Count")
+# Calculate percentages
+cell_type_counts <- cell_type_counts %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+# Define a custom color palette with hex codes
+custom_colors <- c("B-Macrophage Transitional" = "#DC143C",    # Light Purple
+                   "Capillary-Like (aCaps/gCaps)" = "#4169E1",
+                    "Neutrophil-Like" = "#32CD32",
+                    "Myoepithelial-Like (Myofibroblasts/SMCs/Pericytes)" = "#FFD700",
+                    "pDC-Like" = "#C71585",
+                    "Tuft/BASC-Like" = "#40E0D0",
+                    "Mesothelium-Like" = "#FF7F50",
+                    "Cycling Immune" = "#708090",
+                    "Interstitial Macrophage-Like" = "#FF1493",
+                    "Arterial-Like" = "#2E8B57",
+                    "ATI-Like" = "#DA70D6",
+                    "Ciliated-Like Epi" = "#8B4513",
+                    "RASC-Like" = "#4682B4",
+                    "Venous-Like" = "#FF8C00",
+                    "ATII-Like" = "#F08080",
+                    "Monocyte-Like" = "#48D1CC",
+                    "Secretory-Like Epi" = "#9400D3",
+                    "B Cell-Like" = "#FA8072",
+                    "Alveolar Macrophage-Like" = "#778899") 
+# Ensure the CellType factor levels match the color names
+cell_type_counts$CellType <- factor(cell_type_counts$CellType, levels = names(custom_colors))
+# Create a vector with legend labels including percentages
+legend_labels <- cell_type_counts %>%
+  mutate(Label = paste(CellType, " (", round(Percentage, 1), "%)", sep = "")) %>%
+  pull(Label)
+# Create the pie chart
+Dclk1.St.3_pie_chart <- ggplot(cell_type_counts, aes(x = "", y = Percentage, fill = CellType)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar(theta = "y") +
+  theme_void() +
+  scale_fill_manual(values = custom_colors, labels = legend_labels) +
+  labs(title = "Percentage of Each Cell Type in Dclk1 Enriched Starting Pop. (Rep 3)") +
+  theme(
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    legend.position = "right",
+    legend.box = "vertical",
+    legend.box.margin = margin(0, 0, 0, 10),
+    legend.key.size = unit(0.5, "cm"),
+    plot.title = element_text(
+      face = "bold",     # Make the title bold
+      size = 16,         # Increase the size of the title
+      hjust = 0.5        # Center the title
+    )
+  ) +
+  guides(fill = guide_legend(ncol = 2))
+# Display the pie chart
+print(Dclk1.St.3_pie_chart)
+# Save the pie chart
+ggsave("Dclk1.St.3_pie_chart.png", plot = Dclk1.St.3_pie_chart, width = 14, height = 8, dpi = 300)
+```
+
+
+Saving copy of object with the prelim annotations (rough.annos1) and cell cycling scoring
+```{r}
+setwd("/Users/sophieedelstein/Desktop/SE Single Cell/BASC_StartingPop_3")
+save(sub5_BASC_St_3_obj, file = 'Dclk1.enrich_St_3_obj_annos1_082324.Robj')
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
